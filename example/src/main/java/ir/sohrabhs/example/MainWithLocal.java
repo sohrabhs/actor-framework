@@ -14,6 +14,7 @@ import ir.sohrabhs.local.InMemorySnapshotStore;
 import ir.sohrabhs.local.LocalActorSystem;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -31,7 +32,9 @@ public class MainWithLocal {
             .mailboxCapacity(1000)
             .build();
 
-        ActorSystem system = new LocalActorSystem(config);
+        ActorSystem system = new LocalActorSystem(config, Executors.newFixedThreadPool(
+                Math.max(2, Runtime.getRuntime().availableProcessors())
+        ));
 
         InMemoryEventStore<CounterEvent> eventStore = new InMemoryEventStore<>();
         InMemorySnapshotStore<CounterState> snapshotStore = new InMemorySnapshotStore<>();

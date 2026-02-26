@@ -9,7 +9,6 @@ import ir.sohrabhs.actor.core.system.ActorSystemConfig;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * Local actor system implementation.
@@ -21,15 +20,6 @@ public final class LocalActorSystem implements ActorSystem {
     private final ExecutorService executor;
     private final ConcurrentHashMap<String, ActorRef<?>> topLevelActors = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, ShardRegion<?>> shardRegions = new ConcurrentHashMap<>();
-
-    public LocalActorSystem(ActorSystemConfig config) {
-        this.config = config;
-        // Fixed thread pool — reasonable for Android and local execution.
-        // Can be configured via ActorSystemConfig in future.
-        this.executor = Executors.newFixedThreadPool(
-            Math.max(2, Runtime.getRuntime().availableProcessors())
-        );
-    }
 
     public LocalActorSystem(ActorSystemConfig config, ExecutorService executor) {
         this.config = config;
