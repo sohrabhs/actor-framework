@@ -1,4 +1,9 @@
+// actor-core/src/main/java/com/actor/core/actor/ActorContext.java
 package ir.sohrabhs.actor.core.actor;
+
+import ir.sohrabhs.actor.core.persistence.EventStore;
+import ir.sohrabhs.actor.core.persistence.PersistentBehavior;
+import ir.sohrabhs.actor.core.persistence.SnapshotStore;
 
 /**
  * Provides capabilities to an actor during message processing.
@@ -48,6 +53,46 @@ public interface ActorContext<C> {
      * @return Reference to the newly spawned child
      */
     <M> ActorRef<M> spawn(BehaviorFactory<M> factory, String childName);
+
+    /**
+     * Spawn a persistent (event-sourced) child actor.
+     *
+     * DESIGN REASONING:
+     * This method allows parent actors to spawn children that are themselves
+     * persistent. This is essential for hierarchical event-sourced systems
+     * where a coordinator actor (e.g., VWAP) spawns sub-strategy actors (e.g., TWAP).
+     *
+     * The method requires explicit EventStore and SnapshotStore because:
+     * 1. Child actors may need isolated persistence (separate streams)
+     * 2. In production, different actors might use different databases
+     * 3. The parent might be non-persistent while children are persistent
+     *
+     * Maps to: Akka's context.spawn(EventSourcedBehavior.create(...), name)
+     *
+     * @param <M> The child's command type
+     * @param <E> The child's event type
+     * @param <S> The child's state type
+     * @param persistentBehaviorFactory Factory that creates the persistent behavior
+     * @param childName Unique name within this actor's children
+     * @param eventStore Event store for the child's events
+     * @param snapshotStore Snapshot store for the child's state
+     * @return Reference to the newly spawned persistent child
+     */
+    <M, E, S> ActorRef<M> spawnPersistent(
+        PersistentBehaviorFactory<M, E, S> persistentBehaviorFactory,
+        String childName,
+        EventStore<E> eventStore,
+        SnapshotStore<S> snapshotStore
+    );
+
+    /**
+     * Factory for creating PersistentBehavior instances.
+     * Takes childName as parameter so identity can be derived.
+     */
+    @FunctionalInterface
+    interface PersistentBehaviorFactory<C, E, S> {
+        PersistentBehavior<C, E, S> create(String childName);
+    }
 
     /**
      * Stop a child actor.
