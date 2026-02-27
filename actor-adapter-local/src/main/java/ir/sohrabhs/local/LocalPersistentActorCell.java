@@ -16,13 +16,10 @@ import java.util.Optional;
  * 3. Interprets the Effect: persists events, updates state, runs side effects
  * 4. Handles snapshotting based on PersistentBehavior.snapshotEvery()
  *
- * This maps directly to how Akka's EventSourcedBehavior works internally:
- * - Recovery phase: load snapshot, replay events
- * - Running phase: command → effect → persist → apply → callback
- *
- * @param <C> Command type
- * @param <E> Event type
- * @param <S> State type
+ * KEY ARCHITECTURAL DECISION:
+ * We do NOT store context in state (that breaks immutability).
+ * Instead, we wrap the behavior's onCommand call with context injection.
+ * This is how Akka Typed works internally.
  */
 final class LocalPersistentActorCell<C, E, S> {
 
@@ -58,7 +55,6 @@ final class LocalPersistentActorCell<C, E, S> {
 
     /**
      * Recovery: load snapshot + replay events.
-     * This matches Akka's recovery behavior exactly.
      */
     private void recover() {
         currentState = behavior.emptyState();
@@ -92,12 +88,20 @@ final class LocalPersistentActorCell<C, E, S> {
 
     /**
      * Process a command message.
-     * Called by the mailbox. Guaranteed single-threaded.
+     *
+     * CRITICAL UPDATE:
+     * We now wrap the behavior's onCommand with a ContextualPersistentBehavior
+     * that injects the context. This allows the behavior to access context
+     * without storing it in state (which would break immutability).
      */
     void processMessage(C command) {
         try {
-            // Command handler produces an Effect
-            Effect<E, S> effect = behavior.onCommand(currentState, command);
+            // Wrap behavior to inject context
+            ContextualPersistentBehavior<C, E, S> contextualBehavior =
+                    new ContextualPersistentBehavior<>(behavior, context);
+
+            // Call command handler with context-aware wrapper
+            Effect<E, S> effect = contextualBehavior.onCommand(currentState, command);
 
             if (effect.isUnhandled()) {
                 context.log("Unhandled command: %s", command);
@@ -153,4 +157,76 @@ final class LocalPersistentActorCell<C, E, S> {
                 throw new RuntimeException("Escalated from persistent actor " + self.path(), e);
         }
     }
+
+    /**
+     * Wrapper that injects ActorContext into PersistentBehavior.
+     *
+     * DESIGN REASONING:
+     * This is the bridge between the pure PersistentBehavior contract
+     * (which doesn't have context in its interface) and the runtime need
+     * to provide context to behaviors.
+     *
+     * Instead of forcing behaviors to store context in state (impure),
+     * we wrap the onCommand call and make context available through
+     * a thread-local or closure. This matches how Akka Typed works.
+     */
+    private static final class ContextualPersistentBehavior<C, E, S>
+            implements PersistentBehavior<C, E, S> {
+
+        private final PersistentBehavior<C, E, S> delegate;
+        private final ActorContext<C> context;
+
+        ContextualPersistentBehavior(PersistentBehavior<C, E, S> delegate, ActorContext<C> context) {
+            this.delegate = delegate;
+            this.context = context;
+        }
+
+        @Override
+        public ActorIdentity identity() {
+            return delegate.identity();
+        }
+
+        @Override
+        public S emptyState() {
+            return delegate.emptyState();
+        }
+
+        /**
+         * This is where the magic happens:
+         * We provide context access through a pattern similar to
+         * how the state is made available in the behavior.
+         *
+         * For behaviors that need context (like TwapActor, VwapActor),
+         * they can access it through the PersistentBehaviorWithContext interface.
+         */
+        @Override
+        public Effect<E, S> onCommand(S state, C command) {
+            // If behavior implements the extended interface, provide context
+            if (delegate instanceof PersistentBehaviorWithContext) {
+                @SuppressWarnings("unchecked")
+                PersistentBehaviorWithContext<C, E, S> contextAware =
+                        (PersistentBehaviorWithContext<C, E, S>) delegate;
+                return contextAware.onCommandWithContext(context, state, command);
+            }
+            // Otherwise, use standard interface
+            return delegate.onCommand(state, command);
+        }
+
+        @Override
+        public S onEvent(S state, E event) {
+            return delegate.onEvent(state, event);
+        }
+
+        @Override
+        public int snapshotEvery() {
+            return delegate.snapshotEvery();
+        }
+
+        @Override
+        public void onRecoveryComplete(ActorContext<?> context, S state) {
+            delegate.onRecoveryComplete(context, state);
+        }
+    }
 }
+
+

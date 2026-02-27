@@ -28,7 +28,7 @@ public class MainWithLocal {
 
         // --- Infrastructure Setup (would be in DI/composition root) ---
 
-        ActorSystemConfig config = ActorSystemConfig.builder("counter-system")
+        ActorSystemConfig config = ActorSystemConfig.builder("actor-system")
             .mailboxCapacity(1000)
             .build();
 

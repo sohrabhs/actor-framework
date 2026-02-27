@@ -25,7 +25,7 @@ public class MainWithAkka {
 
         // --- The ONLY difference: ActorSystem creation ---
 
-        ActorSystemConfig config = ActorSystemConfig.builder("counter-system")
+        ActorSystemConfig config = ActorSystemConfig.builder("actor-system")
                 .mailboxCapacity(1000)
                 .build();
 
