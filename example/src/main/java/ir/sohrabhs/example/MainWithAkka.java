@@ -44,23 +44,18 @@ public class MainWithAkka {
                 null
         );
 
-        // --- Send Commands ---
+        // =====================================================
+        // PHASE 1: Normal operations
+        // =====================================================
 
-        System.out.println("\n--- Sending commands to counter-42 ---");
+        System.out.println("--- Phase 1: Normal operations ---");
 
         counterShard.tell("42", new CounterCommand.Increment(10));
         counterShard.tell("42", new CounterCommand.Increment(5));
         counterShard.tell("42", new CounterCommand.Decrement(3));
-
-        // Send to a different entity — proves entity isolation
         counterShard.tell("99", new CounterCommand.Increment(100));
 
-        // Wait for async processing (Giving Akka a tiny bit more time to form the local cluster)
-        Thread.sleep(1000);
-
-        // --- Query Current Values ---
-
-        System.out.println("\n--- Querying values ---");
+        Thread.sleep(500);
 
         CompletableFuture<Integer> value42 = new CompletableFuture<>();
         counterShard.tell("42", new CounterCommand.GetValue(value42::complete));
@@ -68,27 +63,75 @@ public class MainWithAkka {
         CompletableFuture<Integer> value99 = new CompletableFuture<>();
         counterShard.tell("99", new CounterCommand.GetValue(value99::complete));
 
-        System.out.println("Counter 42 value: " + value42.get(2, TimeUnit.SECONDS));
-        System.out.println("Counter 99 value: " + value99.get(2, TimeUnit.SECONDS));
+        System.out.println("Counter 42 value: " + value42.get(2, TimeUnit.SECONDS));  // 12
+        System.out.println("Counter 99 value: " + value99.get(2, TimeUnit.SECONDS));  // 100
+        System.out.println("Active entities: " + counterShard.activeEntityCount());     // 2
+        System.out.println("Counter 42 active: " + counterShard.isActive("42"));       // true
 
-        // --- Demonstrate Recovery & Snapshots ---
+        // =====================================================
+        // PHASE 2: Stop via command (self-passivation)
+        // =====================================================
 
-        System.out.println("\n--- Triggering more events to force snapshot ---");
+        System.out.println("\n--- Phase 2: Stop counter-42 via Stop command ---");
 
-        counterShard.tell("42", new CounterCommand.Increment(1));
-        counterShard.tell("42", new CounterCommand.Increment(1));
-        // At this point: 5 events for counter-42, should trigger snapshot
+        counterShard.tell("42", CounterCommand.Stop.INSTANCE);
+        Thread.sleep(500);
 
-        Thread.sleep(1000);
+        System.out.println("Counter 42 active after stop: " + counterShard.isActive("42")); // false
+        System.out.println("Active entities after stop: " + counterShard.activeEntityCount()); // 1
 
-        // NOTE: Unlike the Local adapter, we cannot easily call eventStore.allEvents() here.
-        // Akka abstracts the journal away. To read events directly in Akka, you would use
-        // the Akka Persistence Query API. However, the next GetValue call proves the state is correct.
-        System.out.println("\n(Events are securely persisted in Akka's native journal)");
+        // =====================================================
+        // PHASE 3: Recovery after stop
+        // =====================================================
 
-        CompletableFuture<Integer> finalValue = new CompletableFuture<>();
-        counterShard.tell("42", new CounterCommand.GetValue(finalValue::complete));
-        System.out.println("Counter 42 final value: " + finalValue.get(2, TimeUnit.SECONDS));
+        System.out.println("\n--- Phase 3: Send message to stopped counter-42 (triggers recovery) ---");
+
+        counterShard.tell("42", new CounterCommand.Increment(100));
+        Thread.sleep(500);
+
+        CompletableFuture<Integer> recoveredValue = new CompletableFuture<>();
+        counterShard.tell("42", new CounterCommand.GetValue(recoveredValue::complete));
+
+        System.out.println("Counter 42 value after recovery + increment: "
+                + recoveredValue.get(2, TimeUnit.SECONDS)); // 112 (12 + 100)
+        System.out.println("Counter 42 active after recovery: " + counterShard.isActive("42")); // true
+
+        // =====================================================
+        // PHASE 4: External stop (via shard region)
+        // =====================================================
+
+        System.out.println("\n--- Phase 4: External stop of counter-99 ---");
+
+        boolean stopped = counterShard.stop("99");
+        System.out.println("Counter 99 stopped: " + stopped);  // true
+        System.out.println("Active entities: " + counterShard.activeEntityCount()); // 1
+
+        // Recovery again
+        counterShard.tell("99", new CounterCommand.Increment(50));
+        Thread.sleep(500);
+
+        CompletableFuture<Integer> recovered99 = new CompletableFuture<>();
+        counterShard.tell("99", new CounterCommand.GetValue(recovered99::complete));
+        System.out.println("Counter 99 value after recovery + increment: "
+                + recovered99.get(2, TimeUnit.SECONDS)); // 150
+
+        // =====================================================
+        // PHASE 5: Stop all
+        // =====================================================
+
+        System.out.println("\n--- Phase 5: Stop all entities ---");
+
+        System.out.println("Active before stopAll: " + counterShard.activeEntityCount());
+        int stoppedCount = counterShard.stopAll();
+        System.out.println("Stopped " + stoppedCount + " entities");
+        System.out.println("Active after stopAll: " + counterShard.activeEntityCount()); // 0
+
+        // =====================================================
+        // PHASE 6: Verify events are still in store
+        // =====================================================
+
+        System.out.println("\n--- Phase 6: Event store inspection ---");
+
 
         // --- Cleanup ---
         System.out.println("\n--- Shutting down ---");

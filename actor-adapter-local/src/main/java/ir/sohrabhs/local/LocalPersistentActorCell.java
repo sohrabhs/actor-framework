@@ -15,6 +15,7 @@ import java.util.Optional;
  * 2. On message: calls PersistentBehavior.onCommand → gets Effect
  * 3. Interprets the Effect: persists events, updates state, runs side effects
  * 4. Handles snapshotting based on PersistentBehavior.snapshotEvery()
+ * 5. Handles stop/passivation when Effect.shouldStop() is true
  *
  * KEY ARCHITECTURAL DECISION:
  * We do NOT store context in state (that breaks immutability).
@@ -30,18 +31,27 @@ final class LocalPersistentActorCell<C, E, S> {
     private final String persistenceId;
     private final LocalActorRef<C> self;
     private final SupervisionDecider supervisionDecider;
+    private final Runnable onSelfStop;
 
     private S currentState;
     private long sequenceNumber;
     private long eventsSinceSnapshot;
 
+    /**
+     * Constructor with self-stop callback.
+     *
+     * @param onSelfStop Called when the actor stops itself via Effect.stop().
+     *                   The ShardRegion uses this to remove the entity from its registry.
+     *                   For non-shard actors, this can be a no-op.
+     */
     LocalPersistentActorCell(
             LocalActorRef<C> self,
             ActorContext<C> context,
             PersistentBehavior<C, E, S> behavior,
             EventStore<E> eventStore,
             SnapshotStore<S> snapshotStore,
-            SupervisionDecider supervisionDecider) {
+            SupervisionDecider supervisionDecider,
+            Runnable onSelfStop) {
         this.self = self;
         this.context = context;
         this.behavior = behavior;
@@ -49,8 +59,22 @@ final class LocalPersistentActorCell<C, E, S> {
         this.snapshotStore = snapshotStore;
         this.persistenceId = behavior.identity().persistenceId();
         this.supervisionDecider = supervisionDecider;
+        this.onSelfStop = onSelfStop != null ? onSelfStop : () -> {};
 
         recover();
+    }
+
+    /**
+     * Backward-compatible constructor without self-stop callback.
+     */
+    LocalPersistentActorCell(
+            LocalActorRef<C> self,
+            ActorContext<C> context,
+            PersistentBehavior<C, E, S> behavior,
+            EventStore<E> eventStore,
+            SnapshotStore<S> snapshotStore,
+            SupervisionDecider supervisionDecider) {
+        this(self, context, behavior, eventStore, snapshotStore, supervisionDecider, null);
     }
 
     /**
@@ -88,11 +112,6 @@ final class LocalPersistentActorCell<C, E, S> {
 
     /**
      * Process a command message.
-     *
-     * CRITICAL UPDATE:
-     * We now wrap the behavior's onCommand with a ContextualPersistentBehavior
-     * that injects the context. This allows the behavior to access context
-     * without storing it in state (which would break immutability).
      */
     void processMessage(C command) {
         try {
@@ -129,9 +148,16 @@ final class LocalPersistentActorCell<C, E, S> {
                 context.log("Snapshot saved at seqNr %d", sequenceNumber);
             }
 
-            // Run side effects
+            // Run side effects BEFORE stopping
             if (effect.sideEffect() != null) {
                 effect.sideEffect().apply(currentState);
+            }
+
+            // Handle stop/passivation
+            if (effect.shouldStop()) {
+                context.log("Actor stopping via Effect.stop() (passivation)");
+                self.mailbox().stop();
+                onSelfStop.run();
             }
 
         } catch (Exception e) {
@@ -149,6 +175,7 @@ final class LocalPersistentActorCell<C, E, S> {
             case STOP:
                 context.log("Persistent actor stopping due to: %s", e.getMessage());
                 self.mailbox().stop();
+                onSelfStop.run();
                 break;
             case RESUME:
                 context.log("Persistent actor resuming after: %s", e.getMessage());
@@ -160,15 +187,6 @@ final class LocalPersistentActorCell<C, E, S> {
 
     /**
      * Wrapper that injects ActorContext into PersistentBehavior.
-     *
-     * DESIGN REASONING:
-     * This is the bridge between the pure PersistentBehavior contract
-     * (which doesn't have context in its interface) and the runtime need
-     * to provide context to behaviors.
-     *
-     * Instead of forcing behaviors to store context in state (impure),
-     * we wrap the onCommand call and make context available through
-     * a thread-local or closure. This matches how Akka Typed works.
      */
     private static final class ContextualPersistentBehavior<C, E, S>
             implements PersistentBehavior<C, E, S> {
@@ -191,24 +209,14 @@ final class LocalPersistentActorCell<C, E, S> {
             return delegate.emptyState();
         }
 
-        /**
-         * This is where the magic happens:
-         * We provide context access through a pattern similar to
-         * how the state is made available in the behavior.
-         *
-         * For behaviors that need context (like TwapActor, VwapActor),
-         * they can access it through the PersistentBehaviorWithContext interface.
-         */
         @Override
         public Effect<E, S> onCommand(S state, C command) {
-            // If behavior implements the extended interface, provide context
             if (delegate instanceof PersistentBehaviorWithContext) {
                 @SuppressWarnings("unchecked")
                 PersistentBehaviorWithContext<C, E, S> contextAware =
                         (PersistentBehaviorWithContext<C, E, S>) delegate;
                 return contextAware.onCommandWithContext(context, state, command);
             }
-            // Otherwise, use standard interface
             return delegate.onCommand(state, command);
         }
 
@@ -228,5 +236,3 @@ final class LocalPersistentActorCell<C, E, S> {
         }
     }
 }
-
-
