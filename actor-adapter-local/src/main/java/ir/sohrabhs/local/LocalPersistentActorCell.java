@@ -15,14 +15,12 @@ import java.util.Optional;
  * 2. On message: calls PersistentBehavior.onCommand → gets Effect
  * 3. Interprets the Effect: persists events, updates state, runs side effects
  * 4. Handles snapshotting based on PersistentBehavior.snapshotEvery()
+ * 5. Handles stop/passivation when Effect.shouldStop() is true
  *
- * This maps directly to how Akka's EventSourcedBehavior works internally:
- * - Recovery phase: load snapshot, replay events
- * - Running phase: command → effect → persist → apply → callback
- *
- * @param <C> Command type
- * @param <E> Event type
- * @param <S> State type
+ * KEY ARCHITECTURAL DECISION:
+ * We do NOT store context in state (that breaks immutability).
+ * Instead, we wrap the behavior's onCommand call with context injection.
+ * This is how Akka Typed works internally.
  */
 final class LocalPersistentActorCell<C, E, S> {
 
@@ -33,18 +31,27 @@ final class LocalPersistentActorCell<C, E, S> {
     private final String persistenceId;
     private final LocalActorRef<C> self;
     private final SupervisionDecider supervisionDecider;
+    private final Runnable onSelfStop;
 
     private S currentState;
     private long sequenceNumber;
     private long eventsSinceSnapshot;
 
+    /**
+     * Constructor with self-stop callback.
+     *
+     * @param onSelfStop Called when the actor stops itself via Effect.stop().
+     *                   The ShardRegion uses this to remove the entity from its registry.
+     *                   For non-shard actors, this can be a no-op.
+     */
     LocalPersistentActorCell(
             LocalActorRef<C> self,
             ActorContext<C> context,
             PersistentBehavior<C, E, S> behavior,
             EventStore<E> eventStore,
             SnapshotStore<S> snapshotStore,
-            SupervisionDecider supervisionDecider) {
+            SupervisionDecider supervisionDecider,
+            Runnable onSelfStop) {
         this.self = self;
         this.context = context;
         this.behavior = behavior;
@@ -52,13 +59,26 @@ final class LocalPersistentActorCell<C, E, S> {
         this.snapshotStore = snapshotStore;
         this.persistenceId = behavior.identity().persistenceId();
         this.supervisionDecider = supervisionDecider;
+        this.onSelfStop = onSelfStop != null ? onSelfStop : () -> {};
 
         recover();
     }
 
     /**
+     * Backward-compatible constructor without self-stop callback.
+     */
+    LocalPersistentActorCell(
+            LocalActorRef<C> self,
+            ActorContext<C> context,
+            PersistentBehavior<C, E, S> behavior,
+            EventStore<E> eventStore,
+            SnapshotStore<S> snapshotStore,
+            SupervisionDecider supervisionDecider) {
+        this(self, context, behavior, eventStore, snapshotStore, supervisionDecider, null);
+    }
+
+    /**
      * Recovery: load snapshot + replay events.
-     * This matches Akka's recovery behavior exactly.
      */
     private void recover() {
         currentState = behavior.emptyState();
@@ -92,12 +112,15 @@ final class LocalPersistentActorCell<C, E, S> {
 
     /**
      * Process a command message.
-     * Called by the mailbox. Guaranteed single-threaded.
      */
     void processMessage(C command) {
         try {
-            // Command handler produces an Effect
-            Effect<E, S> effect = behavior.onCommand(currentState, command);
+            // Wrap behavior to inject context
+            ContextualPersistentBehavior<C, E, S> contextualBehavior =
+                    new ContextualPersistentBehavior<>(behavior, context);
+
+            // Call command handler with context-aware wrapper
+            Effect<E, S> effect = contextualBehavior.onCommand(currentState, command);
 
             if (effect.isUnhandled()) {
                 context.log("Unhandled command: %s", command);
@@ -125,9 +148,16 @@ final class LocalPersistentActorCell<C, E, S> {
                 context.log("Snapshot saved at seqNr %d", sequenceNumber);
             }
 
-            // Run side effects
+            // Run side effects BEFORE stopping
             if (effect.sideEffect() != null) {
                 effect.sideEffect().apply(currentState);
+            }
+
+            // Handle stop/passivation
+            if (effect.shouldStop()) {
+                context.log("Actor stopping via Effect.stop() (passivation)");
+                self.mailbox().stop();
+                onSelfStop.run();
             }
 
         } catch (Exception e) {
@@ -145,12 +175,64 @@ final class LocalPersistentActorCell<C, E, S> {
             case STOP:
                 context.log("Persistent actor stopping due to: %s", e.getMessage());
                 self.mailbox().stop();
+                onSelfStop.run();
                 break;
             case RESUME:
                 context.log("Persistent actor resuming after: %s", e.getMessage());
                 break;
             case ESCALATE:
                 throw new RuntimeException("Escalated from persistent actor " + self.path(), e);
+        }
+    }
+
+    /**
+     * Wrapper that injects ActorContext into PersistentBehavior.
+     */
+    private static final class ContextualPersistentBehavior<C, E, S>
+            implements PersistentBehavior<C, E, S> {
+
+        private final PersistentBehavior<C, E, S> delegate;
+        private final ActorContext<C> context;
+
+        ContextualPersistentBehavior(PersistentBehavior<C, E, S> delegate, ActorContext<C> context) {
+            this.delegate = delegate;
+            this.context = context;
+        }
+
+        @Override
+        public ActorIdentity identity() {
+            return delegate.identity();
+        }
+
+        @Override
+        public S emptyState() {
+            return delegate.emptyState();
+        }
+
+        @Override
+        public Effect<E, S> onCommand(S state, C command) {
+            if (delegate instanceof PersistentBehaviorWithContext) {
+                @SuppressWarnings("unchecked")
+                PersistentBehaviorWithContext<C, E, S> contextAware =
+                        (PersistentBehaviorWithContext<C, E, S>) delegate;
+                return contextAware.onCommandWithContext(context, state, command);
+            }
+            return delegate.onCommand(state, command);
+        }
+
+        @Override
+        public S onEvent(S state, E event) {
+            return delegate.onEvent(state, event);
+        }
+
+        @Override
+        public int snapshotEvery() {
+            return delegate.snapshotEvery();
+        }
+
+        @Override
+        public void onRecoveryComplete(ActorContext<?> context, S state) {
+            delegate.onRecoveryComplete(context, state);
         }
     }
 }

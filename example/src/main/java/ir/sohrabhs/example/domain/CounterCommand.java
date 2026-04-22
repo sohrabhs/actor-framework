@@ -55,6 +55,34 @@ public interface CounterCommand {
         }
     }
 
+    /**
+     * Request the actor to stop (passivate).
+     *
+     * DESIGN REASONING:
+     * In Akka Cluster Sharding, the recommended way to stop an entity is
+     * to send it a message that the entity handles by returning Effect.stop().
+     * This ensures:
+     * - The stop is processed in order with other messages
+     * - Any pending messages before Stop are processed first
+     * - Side effects can run before stopping (e.g., saving final state)
+     * - The entity can persist a final event if needed
+     *
+     * This is cleaner than "killing" the actor externally because:
+     * 1. No race conditions with in-flight messages
+     * 2. The actor can clean up resources
+     * 3. The actor can decide whether to actually stop (e.g., reject if busy)
+     */
+    final class Stop implements CounterCommand {
+        public static final Stop INSTANCE = new Stop();
+
+        private Stop() {}
+
+        @Override
+        public String toString() {
+            return "Stop{}";
+        }
+    }
+
     @FunctionalInterface
     interface ValueConsumer {
         void accept(int value);

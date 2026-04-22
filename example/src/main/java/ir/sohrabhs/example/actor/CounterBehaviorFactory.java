@@ -1,6 +1,5 @@
 package ir.sohrabhs.example.actor;
 
-
 import ir.sohrabhs.actor.core.actor.ActorContext;
 import ir.sohrabhs.actor.core.actor.ActorIdentity;
 import ir.sohrabhs.actor.core.persistence.Effect;
@@ -71,36 +70,48 @@ public final class CounterBehaviorFactory {
         /**
          * Command handler: pure function (state, command) → Effect
          *
-         * DESIGN REASONING:
-         * We use if/else instead of visitor pattern for simplicity
-         * (this is Java, not Scala). In real code, you might use
-         * pattern matching or a command handler map.
+         * Now handles Stop command by returning Effect.stop().
+         * The runtime (local or Akka) will:
+         * 1. Process any side effects
+         * 2. Stop the actor's mailbox
+         * 3. Remove the entity from the shard region
+         * 4. On next message, the entity is re-created and recovers
          */
         @Override
         public Effect<CounterEvent, CounterState> onCommand(CounterState state, CounterCommand command) {
             if (command instanceof CounterCommand.Increment) {
                 CounterCommand.Increment inc = (CounterCommand.Increment) command;
                 return Effect.<CounterEvent, CounterState>persist(
-                    new CounterEvent.Incremented(inc.amount())
+                        new CounterEvent.Incremented(inc.amount())
                 ).build();
             }
 
             if (command instanceof CounterCommand.Decrement) {
                 CounterCommand.Decrement dec = (CounterCommand.Decrement) command;
                 return Effect.<CounterEvent, CounterState>persist(
-                    new CounterEvent.Decremented(dec.amount())
+                        new CounterEvent.Decremented(dec.amount())
                 ).build();
             }
 
             if (command instanceof CounterCommand.GetValue) {
                 CounterCommand.GetValue get = (CounterCommand.GetValue) command;
-                // No events to persist — just reply with current state
                 return Effect.<CounterEvent, CounterState>none()
-                    .thenRun(s -> {
-                        get.replyTo().accept(s.value());
-                        return null;
-                    })
-                    .build();
+                        .thenRun(s -> {
+                            get.replyTo().accept(s.value());
+                            return null;
+                        })
+                        .build();
+            }
+
+            if (command instanceof CounterCommand.Stop) {
+                // Graceful stop: run any cleanup, then stop the actor
+                return Effect.<CounterEvent, CounterState>stop()
+                        .thenRun(s -> {
+                            System.out.println("[Counter " + identity.entityId()
+                                    + "] Stopping with final value: " + s.value());
+                            return null;
+                        })
+                        .build();
             }
 
             return Effect.unhandled();
@@ -108,12 +119,6 @@ public final class CounterBehaviorFactory {
 
         /**
          * Event handler: pure function (state, event) → new state
-         *
-         * Called during:
-         * - Recovery (replaying events from store)
-         * - After persisting a new event
-         *
-         * MUST be pure. No side effects.
          */
         @Override
         public CounterState onEvent(CounterState state, CounterEvent event) {
@@ -134,7 +139,7 @@ public final class CounterBehaviorFactory {
         @Override
         public void onRecoveryComplete(ActorContext<?> context, CounterState state) {
             context.log("Counter '%s' recovery complete. Current value: %d",
-                identity.entityId(), state.value());
+                    identity.entityId(), state.value());
         }
     }
 }

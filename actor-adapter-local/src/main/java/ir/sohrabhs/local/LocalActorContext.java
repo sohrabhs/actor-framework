@@ -1,7 +1,11 @@
+// actor-adapter-local/src/main/java/com/actor/local/LocalActorContext.java
 package ir.sohrabhs.local;
 
 
 import ir.sohrabhs.actor.core.actor.*;
+import ir.sohrabhs.actor.core.persistence.EventStore;
+import ir.sohrabhs.actor.core.persistence.PersistentBehavior;
+import ir.sohrabhs.actor.core.persistence.SnapshotStore;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -64,6 +68,68 @@ public final class LocalActorContext<C> implements ActorContext<C> {
         mailbox.start(cell::processMessage);
 
         children.put(childName, childRef);
+        return childRef;
+    }
+
+    /**
+     * NEW METHOD: Spawn a persistent child actor.
+     *
+     * This method creates a full persistent actor as a child:
+     * 1. Creates mailbox and actor reference
+     * 2. Derives ActorIdentity from parent's path + childName
+     * 3. Creates a LocalPersistentActorCell (handles recovery + persistence)
+     * 4. Wires everything together
+     *
+     * CRITICAL DESIGN DECISION:
+     * The child's persistenceId is derived from the parent's context:
+     * Format: "ParentType-ParentId-ChildName"
+     * This ensures:
+     * - Unique persistence streams for each child
+     * - Hierarchical organization in event store
+     * - Easy debugging (you can see the full path in events)
+     *
+     * Example: If parent is VwapStrategy|STR-ETH-2026 and child is "twap-executor",
+     * the child's persistenceId becomes: "VwapStrategy-STR-ETH-2026-twap-executor"
+     */
+    @Override
+    public <M, E, S> ActorRef<M> spawnPersistent(
+            PersistentBehaviorFactory<M, E, S> persistentBehaviorFactory,
+            String childName,
+            EventStore<E> eventStore,
+            SnapshotStore<S> snapshotStore) {
+
+        // 1. Derive child identity from parent context
+        String parentType = identity != null ? identity.typeName() : path.name();
+        String parentId = identity != null ? identity.entityId() : path.name();
+        ActorIdentity childIdentity = new ActorIdentity(
+            parentType + "-Child",
+            parentId + "-" + childName
+        );
+        ActorPath childPath = childIdentity.toActorPath();
+
+        // 2. Create mailbox and reference
+        InMemoryMailbox<M> mailbox = new InMemoryMailbox<>(executor);
+        LocalActorRef<M> childRef = new LocalActorRef<>(childPath, childIdentity, mailbox);
+
+        // 3. Create child context
+        LocalActorContext<M> childContext = new LocalActorContext<>(
+            childRef, childPath, childIdentity, executor, supervisionDecider
+        );
+
+        // 4. Create persistent behavior using the factory
+        PersistentBehavior<M, E, S> persistentBehavior = persistentBehaviorFactory.create(childName);
+
+        // 5. Create persistent actor cell (this handles recovery automatically)
+        LocalPersistentActorCell<M, E, S> cell = new LocalPersistentActorCell<>(
+            childRef, childContext, persistentBehavior, eventStore, snapshotStore, supervisionDecider
+        );
+
+        // 6. Wire mailbox to cell
+        mailbox.start(cell::processMessage);
+
+        // 7. Track child
+        children.put(childName, childRef);
+
         return childRef;
     }
 

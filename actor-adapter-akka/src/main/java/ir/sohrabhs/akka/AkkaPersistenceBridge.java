@@ -21,6 +21,7 @@ import ir.sohrabhs.actor.core.persistence.PersistentBehavior;
  * - Our Effect → Akka's Effect
  * - Our onCommand → Akka's commandHandler
  * - Our onEvent → Akka's eventHandler
+ * - Our Effect.stop() → Akka's Effect().stop() (passivation)
  *
  * The domain code stays completely unaware of Akka.
  *
@@ -40,7 +41,7 @@ public final class AkkaPersistenceBridge {
             ActorContext<C> ourContext = new AkkaActorContextAdapter<>(akkaCtx);
 
             PersistenceId persistenceId = PersistenceId.ofUniqueId(
-                ourBehavior.identity().persistenceId()
+                    ourBehavior.identity().persistenceId()
             );
 
             return new EventSourcedBehavior<C, E, S>(persistenceId) {
@@ -53,7 +54,7 @@ public final class AkkaPersistenceBridge {
                 @Override
                 public CommandHandler<C, E, S> commandHandler() {
                     return newCommandHandlerBuilder()
-                        .forAnyState()
+                            .forAnyState()
                             .onAnyCommand((state, command) -> translateEffect(
                                             ourBehavior.onCommand(state, command),
                                             state, Effect()
@@ -64,8 +65,8 @@ public final class AkkaPersistenceBridge {
                 @Override
                 public EventHandler<S, E> eventHandler() {
                     return newEventHandlerBuilder()
-                        .forAnyState()
-                        .onAnyEvent((state, event) -> ourBehavior.onEvent(state, event));
+                            .forAnyState()
+                            .onAnyEvent((state, event) -> ourBehavior.onEvent(state, event));
                 }
 
                 @Override
@@ -91,6 +92,8 @@ public final class AkkaPersistenceBridge {
 
     /**
      * Translate our Effect to Akka's Effect.
+     *
+     * Now handles Effect.shouldStop() by mapping to Akka's Effect().stop().
      */
     private static <C, E, S> akka.persistence.typed.javadsl.Effect<E, S> translateEffect(
             ir.sohrabhs.actor.core.persistence.Effect<E, S> ourEffect,
@@ -101,34 +104,30 @@ public final class AkkaPersistenceBridge {
             return akkaEffectFactory.unhandled();
         }
 
+        // Build the base effect (persist or none)
+        akka.persistence.typed.javadsl.EffectBuilder<E, S> baseEffect;
+
         if (ourEffect.events().isEmpty()) {
-            if (ourEffect.sideEffect() != null) {
-                ourEffect.sideEffect().apply(currentState);
-            }
-            return akkaEffectFactory.none();
+            baseEffect = akkaEffectFactory.none();
+        } else if (ourEffect.events().size() == 1) {
+            baseEffect = akkaEffectFactory.persist(ourEffect.events().get(0));
+        } else {
+            baseEffect = akkaEffectFactory.persist(ourEffect.events());
         }
 
-        if (ourEffect.events().size() == 1) {
-            akka.persistence.typed.javadsl.EffectBuilder<E, S> effect =
-                    akkaEffectFactory.persist(ourEffect.events().get(0));
-
-            if (ourEffect.sideEffect() != null) {
-                return effect.thenRun(newState -> {
-                    ourEffect.sideEffect().apply(newState);
-                });
-            }
-            return effect.thenNoReply();
-        }
-
-        // Multiple events
-        akka.persistence.typed.javadsl.EffectBuilder<E, S> effect =
-                akkaEffectFactory.persist(ourEffect.events());
-
+        // Apply side effects
         if (ourEffect.sideEffect() != null) {
-            return effect.thenRun(newState -> {
-                ourEffect.sideEffect().apply(newState);
-            });
+            baseEffect = (akka.persistence.typed.javadsl.EffectBuilder<E, S>)
+                    baseEffect.thenRun(newState -> {
+                        ourEffect.sideEffect().apply(newState);
+                    });
         }
-        return effect.thenNoReply();
+
+        // Apply stop if requested
+        if (ourEffect.shouldStop()) {
+            return baseEffect.thenStop();
+        }
+
+        return baseEffect.thenNoReply();
     }
 }
