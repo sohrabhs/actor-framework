@@ -31,9 +31,12 @@ jobs:
           gpg-passphrase: GPG_PASSPHRASE
 
       - name: Publish to Maven Central
-        run: mvn -B deploy -DskipTests
+        # Explicitly passing the passphrase flag tells GPG not to open a UI prompt
+        run: mvn -B deploy -DskipTests -Dgpg.passphrase="$GPG_PASSPHRASE"
         env:
-          # Injecting the secrets into the environment variables defined above
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          # Used by setup-java
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          # Used natively by maven-gpg-plugin 3.0.0+
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
