@@ -10,8 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     
     permissions:
-      contents: read
-      packages: write # Vital for pushing to GitHub Packages
+      contents: read # You no longer need 'packages: write' for Maven Central
 
     steps:
       - name: Checkout Code
@@ -23,15 +22,18 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
           cache: 'maven'
-          # This tells the action to generate a settings.xml with <id>github</id>
-          server-id: github
-          # These refer to the ENV names that will be injected into settings.xml
-          server-username: GITHUB_ACTOR
-          server-password: GITHUB_TOKEN
+          # Maps to the <publishingServerId>central</publishingServerId> in your POM
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_PASSWORD
+          # Enables GPG signing configuration in settings.xml
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: GPG_PASSPHRASE
 
-      - name: Publish to GitHub Packages
-        # We pass the actual secrets into the ENV variables defined above
+      - name: Publish to Maven Central
         run: mvn -B deploy -DskipTests
         env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Injecting the secrets into the environment variables defined above
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}

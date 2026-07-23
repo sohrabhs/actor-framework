@@ -267,17 +267,17 @@ actor-framework/
 File: CounterBehaviorFactory.java
 
 Imports:
-  ✅ ir.sohrabhs.actor.core.actor.ActorContext
-  ✅ ir.sohrabhs.actor.core.actor.ActorIdentity
-  ✅ ir.sohrabhs.actor.core.persistence.Effect
-  ✅ ir.sohrabhs.actor.core.persistence.PersistentBehavior
-  ✅ ir.sohrabhs.example.domain.CounterCommand
-  ✅ ir.sohrabhs.example.domain.CounterEvent
-  ✅ ir.sohrabhs.example.domain.CounterState
+  ✅ actor.io.github.sohrabhs.actor.core.ActorContext
+  ✅ actor.io.github.sohrabhs.actor.core.ActorIdentity
+  ✅ persistence.io.github.sohrabhs.actor.core.Effect
+  ✅ persistence.io.github.sohrabhs.actor.core.PersistentBehavior
+  ✅ domain.io.github.sohrabhs.example.CounterCommand
+  ✅ domain.io.github.sohrabhs.example.CounterEvent
+  ✅ domain.io.github.sohrabhs.example.CounterState
 
   ❌ ZERO akka.* imports
-  ❌ ZERO ir.sohrabhs.local.* imports
-  ❌ ZERO ir.sohrabhs.akka.* imports
+  ❌ ZERO io.github.sohrabhs.local.* imports
+  ❌ ZERO io.github.sohrabhs.akka.* imports
   ❌ ZERO framework-specific imports
 
 Conclusion: Domain is 100% portable.
@@ -333,12 +333,12 @@ CounterBehaviorFactory compiles and runs WITHOUT ANY CHANGES.
 
 ```java
 // actor-adapter-akka/src/main/java/com/actor/akka/AkkaActorContextAdapter.java
-package ir.sohrabhs.akka;
+package io.github.sohrabhs.akka;
 
-import ir.sohrabhs.actor.core.actor.*;
-import ir.sohrabhs.actor.core.persistence.EventStore;
-import ir.sohrabhs.actor.core.persistence.PersistentBehavior;
-import ir.sohrabhs.actor.core.persistence.SnapshotStore;
+import io.github.sohrabhs.actor.core.actor.*;
+import persistence.io.github.sohrabhs.actor.core.EventStore;
+import persistence.io.github.sohrabhs.actor.core.PersistentBehavior;
+import persistence.io.github.sohrabhs.actor.core.SnapshotStore;
 
 /**
  * Adapts Akka's ActorContext to our ActorContext interface.
@@ -434,12 +434,12 @@ public final class AkkaActorContextAdapter<C> implements ActorContext<C> {
 }
 ```
 ```java
-package ir.sohrabhs.akka;
+package io.github.sohrabhs.akka;
 
 
-import ir.sohrabhs.actor.core.actor.ActorIdentity;
-import ir.sohrabhs.actor.core.actor.ActorPath;
-import ir.sohrabhs.actor.core.actor.ActorRef;
+import actor.io.github.sohrabhs.actor.core.ActorIdentity;
+import actor.io.github.sohrabhs.actor.core.ActorPath;
+import actor.io.github.sohrabhs.actor.core.ActorRef;
 
 /**
  * Wraps Akka's ActorRef in our ActorRef interface.
@@ -476,18 +476,18 @@ public final class AkkaActorRefAdapter<C> implements ActorRef<C> {
 }
 ```
 ```java
-package ir.sohrabhs.akka;
+package io.github.sohrabhs.akka;
 
 import akka.actor.typed.javadsl.Behaviors;
-import ir.sohrabhs.actor.core.actor.ActorRef;
-import ir.sohrabhs.actor.core.actor.BehaviorFactory;
-import ir.sohrabhs.actor.core.actor.SupervisionDecider;
-import ir.sohrabhs.actor.core.persistence.EventStore;
-import ir.sohrabhs.actor.core.persistence.PersistentBehavior;
-import ir.sohrabhs.actor.core.persistence.SnapshotStore;
-import ir.sohrabhs.actor.core.shard.ShardRegion;
-import ir.sohrabhs.actor.core.system.ActorSystem;
-import ir.sohrabhs.actor.core.system.ActorSystemConfig;
+import actor.io.github.sohrabhs.actor.core.ActorRef;
+import actor.io.github.sohrabhs.actor.core.BehaviorFactory;
+import actor.io.github.sohrabhs.actor.core.SupervisionDecider;
+import persistence.io.github.sohrabhs.actor.core.EventStore;
+import persistence.io.github.sohrabhs.actor.core.PersistentBehavior;
+import persistence.io.github.sohrabhs.actor.core.SnapshotStore;
+import shard.io.github.sohrabhs.actor.core.ShardRegion;
+import system.io.github.sohrabhs.actor.core.ActorSystem;
+import system.io.github.sohrabhs.actor.core.ActorSystemConfig;
 
 /**
  * Akka Typed adapter for our ActorSystem interface.
@@ -578,12 +578,12 @@ public final class AkkaActorSystemAdapter implements ActorSystem {
 }
 ```
 ```java
-package ir.sohrabhs.akka;
+package io.github.sohrabhs.akka;
 
 import akka.actor.typed.javadsl.AbstractBehavior;
 import akka.actor.typed.javadsl.Receive;
 import akka.actor.typed.javadsl.ReceiveBuilder;
-import ir.sohrabhs.actor.core.actor.*;
+import io.github.sohrabhs.actor.core.actor.*;
 
 /**
  * Bridges our core Behavior<C> to Akka Typed's AbstractBehavior<C>.
@@ -658,14 +658,14 @@ public final class AkkaBehaviorBridge {
 }
 ```
 ```java
-package ir.sohrabhs.akka;
+package io.github.sohrabhs.akka;
 
 import akka.actor.typed.Behavior;
 import akka.actor.typed.javadsl.Behaviors;
 import akka.persistence.typed.PersistenceId;
 import akka.persistence.typed.javadsl.*;
-import ir.sohrabhs.actor.core.actor.ActorContext;
-import ir.sohrabhs.actor.core.persistence.PersistentBehavior;
+import actor.io.github.sohrabhs.actor.core.ActorContext;
+import persistence.io.github.sohrabhs.actor.core.PersistentBehavior;
 
 /**
  * Bridges our PersistentBehavior to Akka Typed Persistence's EventSourcedBehavior.
@@ -753,7 +753,7 @@ public final class AkkaPersistenceBridge {
      * Translate our Effect to Akka's Effect.
      */
     private static <C, E, S> akka.persistence.typed.javadsl.Effect<E, S> translateEffect(
-            ir.sohrabhs.actor.core.persistence.Effect<E, S> ourEffect,
+            persistence.io.github.sohrabhs.actor.core.Effect<E, S> ourEffect,
             S currentState,
             EffectFactories<E, S> akkaEffectFactory) {
 
@@ -794,18 +794,18 @@ public final class AkkaPersistenceBridge {
 }
 ```
 ```java
-package ir.sohrabhs.akka;
+package io.github.sohrabhs.akka;
 
 import akka.actor.typed.ActorSystem;
 import akka.cluster.sharding.typed.javadsl.ClusterSharding;
 import akka.cluster.sharding.typed.javadsl.Entity;
 import akka.cluster.sharding.typed.javadsl.EntityRef;
 import akka.cluster.sharding.typed.javadsl.EntityTypeKey;
-import ir.sohrabhs.actor.core.actor.ActorIdentity;
-import ir.sohrabhs.actor.core.actor.ActorPath;
-import ir.sohrabhs.actor.core.actor.ActorRef;
-import ir.sohrabhs.actor.core.persistence.PersistentBehavior;
-import ir.sohrabhs.actor.core.shard.ShardRegion;
+import actor.io.github.sohrabhs.actor.core.ActorIdentity;
+import actor.io.github.sohrabhs.actor.core.ActorPath;
+import actor.io.github.sohrabhs.actor.core.ActorRef;
+import persistence.io.github.sohrabhs.actor.core.PersistentBehavior;
+import shard.io.github.sohrabhs.actor.core.ShardRegion;
 
 import java.util.function.Function;
 
@@ -882,11 +882,11 @@ public final class AkkaShardAdapter<C> implements ShardRegion<C> {
 }
 ```
 ```java
-package ir.sohrabhs.local;
+package io.github.sohrabhs.local;
 
 
-import ir.sohrabhs.actor.core.persistence.EventStore;
-import ir.sohrabhs.actor.core.persistence.PersistedEvent;
+import persistence.io.github.sohrabhs.actor.core.EventStore;
+import persistence.io.github.sohrabhs.actor.core.PersistedEvent;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -942,10 +942,10 @@ public final class InMemoryEventStore<E> implements EventStore<E> {
 }
 ```
 ```java
-package ir.sohrabhs.local;
+package io.github.sohrabhs.local;
 
 
-import ir.sohrabhs.actor.core.mailbox.Mailbox;
+import mailbox.io.github.sohrabhs.actor.core.Mailbox;
 
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
@@ -1039,11 +1039,11 @@ public final class InMemoryMailbox<C> implements Mailbox<C> {
 }
 ```
 ```java
-package ir.sohrabhs.local;
+package io.github.sohrabhs.local;
 
 
-import ir.sohrabhs.actor.core.persistence.PersistedSnapshot;
-import ir.sohrabhs.actor.core.persistence.SnapshotStore;
+import persistence.io.github.sohrabhs.actor.core.PersistedSnapshot;
+import persistence.io.github.sohrabhs.actor.core.SnapshotStore;
 
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -1077,9 +1077,9 @@ public final class InMemorySnapshotStore<S> implements SnapshotStore<S> {
 }
 ```
 ```java
-package ir.sohrabhs.local;
+package io.github.sohrabhs.local;
 
-import ir.sohrabhs.actor.core.actor.*;
+import io.github.sohrabhs.actor.core.actor.*;
 
 /**
  * The runtime cell for a local actor. Holds the current behavior and processes messages.
@@ -1156,13 +1156,13 @@ final class LocalActorCell<C> {
 ```
 ```java
 // actor-adapter-local/src/main/java/com/actor/local/LocalActorContext.java
-package ir.sohrabhs.local;
+package io.github.sohrabhs.local;
 
 
-import ir.sohrabhs.actor.core.actor.*;
-import ir.sohrabhs.actor.core.persistence.EventStore;
-import ir.sohrabhs.actor.core.persistence.PersistentBehavior;
-import ir.sohrabhs.actor.core.persistence.SnapshotStore;
+import io.github.sohrabhs.actor.core.actor.*;
+import persistence.io.github.sohrabhs.actor.core.EventStore;
+import persistence.io.github.sohrabhs.actor.core.PersistentBehavior;
+import persistence.io.github.sohrabhs.actor.core.SnapshotStore;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -1313,13 +1313,13 @@ public final class LocalActorContext<C> implements ActorContext<C> {
 }
 ```
 ```java
-package ir.sohrabhs.local;
+package io.github.sohrabhs.local;
 
 
-import ir.sohrabhs.actor.core.actor.ActorIdentity;
-import ir.sohrabhs.actor.core.actor.ActorPath;
-import ir.sohrabhs.actor.core.actor.ActorRef;
-import ir.sohrabhs.actor.core.mailbox.Mailbox;
+import actor.io.github.sohrabhs.actor.core.ActorIdentity;
+import actor.io.github.sohrabhs.actor.core.ActorPath;
+import actor.io.github.sohrabhs.actor.core.ActorRef;
+import mailbox.io.github.sohrabhs.actor.core.Mailbox;
 
 /**
  * Local actor reference that delivers messages via a mailbox.
@@ -1362,14 +1362,14 @@ public final class LocalActorRef<C> implements ActorRef<C> {
 }
 ```
 ```java
-package ir.sohrabhs.local;
+package io.github.sohrabhs.local;
 
-import ir.sohrabhs.actor.core.actor.*;
-import ir.sohrabhs.actor.core.persistence.EventStore;
-import ir.sohrabhs.actor.core.persistence.SnapshotStore;
-import ir.sohrabhs.actor.core.shard.ShardRegion;
-import ir.sohrabhs.actor.core.system.ActorSystem;
-import ir.sohrabhs.actor.core.system.ActorSystemConfig;
+import io.github.sohrabhs.actor.core.actor.*;
+import persistence.io.github.sohrabhs.actor.core.EventStore;
+import persistence.io.github.sohrabhs.actor.core.SnapshotStore;
+import shard.io.github.sohrabhs.actor.core.ShardRegion;
+import system.io.github.sohrabhs.actor.core.ActorSystem;
+import system.io.github.sohrabhs.actor.core.ActorSystemConfig;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -1448,10 +1448,10 @@ public final class LocalActorSystem implements ActorSystem {
 }
 ```
 ```java
-package ir.sohrabhs.local;
+package io.github.sohrabhs.local;
 
-import ir.sohrabhs.actor.core.actor.*;
-import ir.sohrabhs.actor.core.persistence.*;
+import io.github.sohrabhs.actor.core.actor.*;
+import io.github.sohrabhs.actor.core.persistence.*;
 
 import java.util.List;
 import java.util.Optional;
@@ -1680,12 +1680,12 @@ final class LocalPersistentActorCell<C, E, S> {
 }
 ```
 ```java
-package ir.sohrabhs.local;
+package io.github.sohrabhs.local;
 
-import ir.sohrabhs.actor.core.actor.*;
-import ir.sohrabhs.actor.core.persistence.*;
-import ir.sohrabhs.actor.core.shard.ShardRegion;
-import ir.sohrabhs.actor.core.system.ActorSystem;
+import io.github.sohrabhs.actor.core.actor.*;
+import io.github.sohrabhs.actor.core.persistence.*;
+import shard.io.github.sohrabhs.actor.core.ShardRegion;
+import system.io.github.sohrabhs.actor.core.ActorSystem;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -1777,11 +1777,11 @@ public final class LocalShardRegion<C, E, S> implements ShardRegion<C> {
 }
 ```
 ```java
-package ir.sohrabhs.local;
+package io.github.sohrabhs.local;
 
-import ir.sohrabhs.actor.core.actor.ActorContext;
-import ir.sohrabhs.actor.core.persistence.Effect;
-import ir.sohrabhs.actor.core.persistence.PersistentBehavior;
+import actor.io.github.sohrabhs.actor.core.ActorContext;
+import persistence.io.github.sohrabhs.actor.core.Effect;
+import persistence.io.github.sohrabhs.actor.core.PersistentBehavior;
 
 /**
  * OPTIONAL EXTENDED INTERFACE:
@@ -1812,11 +1812,11 @@ public interface PersistentBehaviorWithContext<C, E, S> extends PersistentBehavi
 ```
 ```java
 // actor-core/src/main/java/com/actor/core/actor/ActorContext.java
-package ir.sohrabhs.actor.core.actor;
+package io.github.sohrabhs.actor.core.actor;
 
-import ir.sohrabhs.actor.core.persistence.EventStore;
-import ir.sohrabhs.actor.core.persistence.PersistentBehavior;
-import ir.sohrabhs.actor.core.persistence.SnapshotStore;
+import persistence.io.github.sohrabhs.actor.core.EventStore;
+import persistence.io.github.sohrabhs.actor.core.PersistentBehavior;
+import persistence.io.github.sohrabhs.actor.core.SnapshotStore;
 
 /**
  * Provides capabilities to an actor during message processing.
@@ -1926,7 +1926,7 @@ public interface ActorContext<C> {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.actor;
+package io.github.sohrabhs.actor.core.actor;
 
 import java.util.Objects;
 
@@ -1991,7 +1991,7 @@ public final class ActorIdentity {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.actor;
+package io.github.sohrabhs.actor.core.actor;
 
 import java.util.Objects;
 
@@ -2075,7 +2075,7 @@ public final class ActorPath {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.actor;
+package io.github.sohrabhs.actor.core.actor;
 
 /**
  * A reference to an actor that can receive messages.
@@ -2111,7 +2111,7 @@ public interface ActorRef<C> {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.actor;
+package io.github.sohrabhs.actor.core.actor;
 
 /**
  * The fundamental abstraction for actor behavior.
@@ -2145,7 +2145,7 @@ public interface Behavior<C> {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.actor;
+package io.github.sohrabhs.actor.core.actor;
 
 /**
  * Factory that creates the initial Behavior given an ActorContext.
@@ -2165,7 +2165,7 @@ public interface BehaviorFactory<C> {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.actor;
+package io.github.sohrabhs.actor.core.actor;
 
 /**
  * Factory methods for common behavior patterns.
@@ -2256,7 +2256,7 @@ public final class Behaviors {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.actor;
+package io.github.sohrabhs.actor.core.actor;
 
 /**
  * A function that decides the supervision strategy based on the thrown exception.
@@ -2283,7 +2283,7 @@ public interface SupervisionDecider {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.actor;
+package io.github.sohrabhs.actor.core.actor;
 
 /**
  * Defines how failures are handled.
@@ -2306,7 +2306,7 @@ public enum SupervisionStrategy {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.mailbox;
+package io.github.sohrabhs.actor.core.mailbox;
 
 /**
  * Abstraction for an actor's message queue.
@@ -2355,7 +2355,7 @@ public interface Mailbox<C> {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.persistence;
+package io.github.sohrabhs.actor.core.persistence;
 
 
 import java.util.Collections;
@@ -2477,7 +2477,7 @@ public final class Effect<E, S> {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.persistence;
+package io.github.sohrabhs.actor.core.persistence;
 
 import java.util.List;
 
@@ -2524,7 +2524,7 @@ public interface EventStore<E> {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.persistence;
+package io.github.sohrabhs.actor.core.persistence;
 
 import java.util.Objects;
 
@@ -2561,7 +2561,7 @@ public final class PersistedEvent<E> {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.persistence;
+package io.github.sohrabhs.actor.core.persistence;
 
 import java.util.Objects;
 
@@ -2598,11 +2598,11 @@ public final class PersistedSnapshot<S> {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.persistence;
+package io.github.sohrabhs.actor.core.persistence;
 
 
-import ir.sohrabhs.actor.core.actor.ActorContext;
-import ir.sohrabhs.actor.core.actor.ActorIdentity;
+import actor.io.github.sohrabhs.actor.core.ActorContext;
+import actor.io.github.sohrabhs.actor.core.ActorIdentity;
 
 /**
  * Defines an event-sourced actor's behavior.
@@ -2679,7 +2679,7 @@ public interface PersistentBehavior<C, E, S> {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.persistence;
+package io.github.sohrabhs.actor.core.persistence;
 
 import java.util.Optional;
 
@@ -2711,7 +2711,7 @@ public interface SnapshotStore<S> {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.shard;
+package io.github.sohrabhs.actor.core.shard;
 
 /**
  * Extracts entity ID from a message.
@@ -2727,7 +2727,7 @@ public interface EntityIdExtractor<C> {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.shard;
+package io.github.sohrabhs.actor.core.shard;
 
 import java.util.Objects;
 
@@ -2763,10 +2763,10 @@ public final class ShardEnvelope<C> {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.shard;
+package io.github.sohrabhs.actor.core.shard;
 
 
-import ir.sohrabhs.actor.core.actor.ActorRef;
+import actor.io.github.sohrabhs.actor.core.ActorRef;
 
 /**
  * A logical shard region that routes messages to entity actors.
@@ -2815,16 +2815,16 @@ public interface ShardRegion<C> {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.system;
+package io.github.sohrabhs.actor.core.system;
 
 
-import ir.sohrabhs.actor.core.actor.ActorRef;
-import ir.sohrabhs.actor.core.actor.BehaviorFactory;
-import ir.sohrabhs.actor.core.actor.SupervisionDecider;
-import ir.sohrabhs.actor.core.persistence.EventStore;
-import ir.sohrabhs.actor.core.persistence.PersistentBehavior;
-import ir.sohrabhs.actor.core.persistence.SnapshotStore;
-import ir.sohrabhs.actor.core.shard.ShardRegion;
+import actor.io.github.sohrabhs.actor.core.ActorRef;
+import actor.io.github.sohrabhs.actor.core.BehaviorFactory;
+import actor.io.github.sohrabhs.actor.core.SupervisionDecider;
+import persistence.io.github.sohrabhs.actor.core.EventStore;
+import persistence.io.github.sohrabhs.actor.core.PersistentBehavior;
+import persistence.io.github.sohrabhs.actor.core.SnapshotStore;
+import shard.io.github.sohrabhs.actor.core.ShardRegion;
 
 /**
  * The top-level entry point for the actor system.
@@ -2894,10 +2894,10 @@ public interface ActorSystem {
 }
 ```
 ```java
-package ir.sohrabhs.actor.core.system;
+package io.github.sohrabhs.actor.core.system;
 
 
-import ir.sohrabhs.actor.core.actor.SupervisionDecider;
+import actor.io.github.sohrabhs.actor.core.SupervisionDecider;
 
 /**
  * Configuration for the actor system.
@@ -2949,16 +2949,16 @@ public final class ActorSystemConfig {
 ```
 
 ```java
-package ir.sohrabhs.example.actor;
+package io.github.sohrabhs.example.actor;
 
 
-import ir.sohrabhs.actor.core.actor.ActorContext;
-import ir.sohrabhs.actor.core.actor.ActorIdentity;
-import ir.sohrabhs.actor.core.persistence.Effect;
-import ir.sohrabhs.actor.core.persistence.PersistentBehavior;
-import ir.sohrabhs.example.domain.CounterCommand;
-import ir.sohrabhs.example.domain.CounterEvent;
-import ir.sohrabhs.example.domain.CounterState;
+import actor.io.github.sohrabhs.actor.core.ActorContext;
+import actor.io.github.sohrabhs.actor.core.ActorIdentity;
+import persistence.io.github.sohrabhs.actor.core.Effect;
+import persistence.io.github.sohrabhs.actor.core.PersistentBehavior;
+import domain.io.github.sohrabhs.example.CounterCommand;
+import domain.io.github.sohrabhs.example.CounterEvent;
+import domain.io.github.sohrabhs.example.CounterState;
 
 /**
  * Defines the Counter entity's persistent behavior.
@@ -3091,7 +3091,7 @@ public final class CounterBehaviorFactory {
 }
 ```
 ```java
-package ir.sohrabhs.example.domain;
+package io.github.sohrabhs.example.domain;
 
 /**
  * Commands for the Counter actor.
@@ -3155,7 +3155,7 @@ public interface CounterCommand {
 }
 ```
 ```java
-package ir.sohrabhs.example.domain;
+package io.github.sohrabhs.example.domain;
 
 import java.io.Serializable;
 
@@ -3199,7 +3199,7 @@ public interface CounterEvent extends Serializable {
 }
 ```
 ```java
-package ir.sohrabhs.example.domain;
+package io.github.sohrabhs.example.domain;
 
 import java.io.Serializable;
 
@@ -3247,14 +3247,14 @@ public final class CounterState implements Serializable {
 }
 ```
 ```java
-package ir.sohrabhs.example;
+package io.github.sohrabhs.example;
 
-import ir.sohrabhs.actor.core.shard.ShardRegion;
-import ir.sohrabhs.actor.core.system.ActorSystem;
-import ir.sohrabhs.actor.core.system.ActorSystemConfig;
-import ir.sohrabhs.akka.AkkaActorSystemAdapter;
-import ir.sohrabhs.example.actor.CounterBehaviorFactory;
-import ir.sohrabhs.example.domain.CounterCommand;
+import shard.io.github.sohrabhs.actor.core.ShardRegion;
+import system.io.github.sohrabhs.actor.core.ActorSystem;
+import system.io.github.sohrabhs.actor.core.ActorSystemConfig;
+import io.github.sohrabhs.akka.AkkaActorSystemAdapter;
+import actor.io.github.sohrabhs.example.CounterBehaviorFactory;
+import domain.io.github.sohrabhs.example.CounterCommand;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -3347,20 +3347,20 @@ public class MainWithAkka {
 }
 ```
 ```java
-package ir.sohrabhs.example;
+package io.github.sohrabhs.example;
 
 
 
-import ir.sohrabhs.actor.core.shard.ShardRegion;
-import ir.sohrabhs.actor.core.system.ActorSystem;
-import ir.sohrabhs.actor.core.system.ActorSystemConfig;
-import ir.sohrabhs.example.actor.CounterBehaviorFactory;
-import ir.sohrabhs.example.domain.CounterCommand;
-import ir.sohrabhs.example.domain.CounterEvent;
-import ir.sohrabhs.example.domain.CounterState;
-import ir.sohrabhs.local.InMemoryEventStore;
-import ir.sohrabhs.local.InMemorySnapshotStore;
-import ir.sohrabhs.local.LocalActorSystem;
+import shard.io.github.sohrabhs.actor.core.ShardRegion;
+import system.io.github.sohrabhs.actor.core.ActorSystem;
+import system.io.github.sohrabhs.actor.core.ActorSystemConfig;
+import actor.io.github.sohrabhs.example.CounterBehaviorFactory;
+import domain.io.github.sohrabhs.example.CounterCommand;
+import domain.io.github.sohrabhs.example.CounterEvent;
+import domain.io.github.sohrabhs.example.CounterState;
+import io.github.sohrabhs.local.InMemoryEventStore;
+import io.github.sohrabhs.local.InMemorySnapshotStore;
+import io.github.sohrabhs.local.LocalActorSystem;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;

@@ -4,16 +4,16 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>ir.sohrabhs</groupId>
+    <groupId>io.github.sohrabhs</groupId>
     <artifactId>actor-framework</artifactId>
-    <version>1.0.0-alpha</version>
+    <version>1.0.0-alpha-1</version>
     <packaging>pom</packaging>
 
     <modules>
         <module>actor-core</module>
         <module>actor-adapter-local</module>
         <module>actor-adapter-akka</module>
-        <module>example</module>
+<!--        <module>example</module>-->
     </modules>
 
     <properties>
@@ -21,14 +21,37 @@
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
+    <name>Actor Framework</name>
+    <description>Lightweight actor framework for Java</description>
+    <url>https://github.com/sohrabhs/actor-framework</url>
 
-    <distributionManagement>
-        <repository>
-            <id>github</id>
-            <name>GitHub Packages</name>
-            <url>https://maven.pkg.github.com/sohrabhs/actor-framework</url>
-        </repository>
-    </distributionManagement>
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/license/mit</url>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>sohrabhs</id>
+            <name>Sohrab Haghayegh</name>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>
+            scm:git:git://github.com/sohrabhs/actor-framework.git
+        </connection>
+
+        <developerConnection>
+            scm:git:ssh://github.com/sohrabhs/actor-framework.git
+        </developerConnection>
+
+        <url>
+            https://github.com/sohrabhs/actor-framework
+        </url>
+    </scm>
 
     <repositories>
         <repository>
@@ -42,6 +65,7 @@
 
     <build>
         <plugins>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>
@@ -73,6 +97,36 @@
                     <doclint>none</doclint>
                 </configuration>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-gpg-plugin</artifactId>
+                <version>3.2.7</version>
+
+                <configuration>
+                    <bestPractices>true</bestPractices>
+                </configuration>
+
+                <executions>
+                    <execution>
+                        <id>sign-artifacts</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>sign</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+                <version>0.9.0</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <publishingServerId>central</publishingServerId>
+                </configuration>
+            </plugin>
+
         </plugins>
     </build>
 </project>

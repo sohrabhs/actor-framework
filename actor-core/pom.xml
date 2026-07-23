@@ -4,9 +4,9 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>ir.sohrabhs</groupId>
+        <groupId>io.github.sohrabhs</groupId>
         <artifactId>actor-framework</artifactId>
-        <version>1.0.0-alpha</version>
+        <version>1.0.0-alpha-1</version>
     </parent>
 
     <artifactId>actor-core</artifactId>
@@ -16,5 +16,5 @@
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
-
+    <name>Actor Core</name>
 </project>

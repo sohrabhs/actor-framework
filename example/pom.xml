@@ -4,9 +4,9 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>ir.sohrabhs</groupId>
+        <groupId>io.github.sohrabhs</groupId>
         <artifactId>actor-framework</artifactId>
-        <version>1.0.0-alpha</version>
+        <version>1.0.0-alpha-1</version>
     </parent>
 
     <artifactId>example</artifactId>
@@ -18,21 +18,21 @@
     </properties>
     <dependencies>
         <dependency>
-            <groupId>ir.sohrabhs</groupId>
+            <groupId>io.github.sohrabhs</groupId>
             <artifactId>actor-core</artifactId>
-            <version>1.0.0-alpha</version>
+            <version>1.0.0-alpha-1</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
-            <groupId>ir.sohrabhs</groupId>
+            <groupId>io.github.sohrabhs</groupId>
             <artifactId>actor-adapter-local</artifactId>
-            <version>1.0.0-alpha</version>
+            <version>1.0.0-alpha-1</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
-            <groupId>ir.sohrabhs</groupId>
+            <groupId>io.github.sohrabhs</groupId>
             <artifactId>actor-adapter-akka</artifactId>
-            <version>1.0.0-alpha</version>
+            <version>1.0.0-alpha-1</version>
             <scope>compile</scope>
         </dependency>
     </dependencies>
