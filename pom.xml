@@ -6,7 +6,7 @@
 
     <groupId>io.github.sohrabhs</groupId>
     <artifactId>actor-framework</artifactId>
-    <version>1.0.0-alpha-1</version>
+    <version>1.0.0-alpha-2</version>
     <packaging>pom</packaging>
 
     <modules>
@@ -114,6 +114,7 @@
                 <extensions>true</extensions>
                 <configuration>
                     <publishingServerId>central</publishingServerId>
+                    <autoPublish>true</autoPublish>
                 </configuration>
             </plugin>
 
