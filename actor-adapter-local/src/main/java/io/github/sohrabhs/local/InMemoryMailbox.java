@@ -2,6 +2,7 @@ package io.github.sohrabhs.local;
 
 
 import io.github.sohrabhs.actor.core.mailbox.Mailbox;
+import io.github.sohrabhs.actor.core.mailbox.UrgentMessage;
 
 import java.util.ArrayDeque;
 import java.util.concurrent.ExecutorService;
@@ -22,6 +23,7 @@ public final class InMemoryMailbox<C> implements Mailbox<C> {
 
     private final Object queueLock = new Object();
     private final ArrayDeque<C> queue;
+    private final ArrayDeque<C> urgentQueue;
     private final int capacity;
     private final AtomicBoolean scheduled = new AtomicBoolean(false);
     private final ExecutorService executor;
@@ -35,6 +37,7 @@ public final class InMemoryMailbox<C> implements Mailbox<C> {
         this.executor = executor;
         this.capacity = capacity;
         this.queue = new ArrayDeque<>(capacity);
+        this.urgentQueue = new ArrayDeque<>();
     }
 
     @Override
@@ -43,12 +46,23 @@ public final class InMemoryMailbox<C> implements Mailbox<C> {
             return; // silently drop — matches Akka's dead letter behavior
         }
         synchronized (queueLock) {
-            // Keep the newest observations. A slow actor must degrade by skipping stale market
-            // data, not by retaining an unbounded history until the process runs out of heap.
-            if (queue.size() == capacity) {
-                queue.removeFirst();
+            if (message instanceof UrgentMessage) {
+                if (sizeLocked() == capacity) {
+                    if (!queue.isEmpty()) queue.removeFirst();
+                    else urgentQueue.removeFirst();
+                }
+                urgentQueue.addLast(message);
+            } else {
+                // Keep the newest observations. A slow actor must degrade by skipping stale market
+                // data, not by retaining an unbounded history until the process runs out of heap.
+                if (sizeLocked() == capacity) {
+                    // Lifecycle controls already occupy the whole mailbox. Never evict one for
+                    // ordinary traffic; the next ordinary observation can safely be skipped.
+                    if (queue.isEmpty()) return;
+                    queue.removeFirst();
+                }
+                queue.addLast(message);
             }
-            queue.addLast(message);
         }
         scheduleProcessing();
     }
@@ -64,13 +78,14 @@ public final class InMemoryMailbox<C> implements Mailbox<C> {
         this.stopped = true;
         synchronized (queueLock) {
             queue.clear();
+            urgentQueue.clear();
         }
     }
 
     @Override
     public boolean hasPending() {
         synchronized (queueLock) {
-            return !queue.isEmpty();
+            return !urgentQueue.isEmpty() || !queue.isEmpty();
         }
     }
 
@@ -113,7 +128,12 @@ public final class InMemoryMailbox<C> implements Mailbox<C> {
 
     private C poll() {
         synchronized (queueLock) {
-            return queue.pollFirst();
+            C urgent = urgentQueue.pollFirst();
+            return urgent != null ? urgent : queue.pollFirst();
         }
+    }
+
+    private int sizeLocked() {
+        return urgentQueue.size() + queue.size();
     }
 }
