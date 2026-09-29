@@ -42,4 +42,15 @@ public interface EventStore<E> {
      * Returns 0 if no events exist.
      */
     long highestSequenceNumber(String persistenceId);
+
+    /**
+     * Delete events at or below a sequence number after an equivalent snapshot is durable.
+     *
+     * <p>Stores that cannot compact safely may keep their existing behaviour by relying on this
+     * default no-op. Local/in-memory execution implements it so a long-running actor does not keep
+     * every high-frequency market event for the lifetime of the process.</p>
+     */
+    default void deleteUpTo(String persistenceId, long maxSequenceNumber) {
+        // Optional capability.
+    }
 }

@@ -35,11 +35,11 @@ public final class LocalActorSystem implements ActorSystem {
     public <C> ActorRef<C> spawn(BehaviorFactory<C> factory, String name, SupervisionDecider decider) {
         ActorPath path = ActorPath.root().child(name);
 
-        InMemoryMailbox<C> mailbox = new InMemoryMailbox<>(executor);
+        InMemoryMailbox<C> mailbox = new InMemoryMailbox<>(executor, config.defaultMailboxCapacity());
         LocalActorRef<C> ref = new LocalActorRef<>(path, null, mailbox);
 
         LocalActorContext<C> context = new LocalActorContext<>(
-            ref, path, null, executor, decider
+            ref, path, null, executor, decider, config.defaultMailboxCapacity()
         );
 
         Behavior<C> behavior = factory.create(context);
@@ -60,7 +60,7 @@ public final class LocalActorSystem implements ActorSystem {
 
         LocalShardRegion<C, E, S> region = new LocalShardRegion<>(
             typeName, behaviorFactory, eventStore, snapshotStore,
-            executor, config.defaultSupervision()
+            executor, config.defaultSupervision(), config.defaultMailboxCapacity()
         );
 
         shardRegions.put(typeName, region);

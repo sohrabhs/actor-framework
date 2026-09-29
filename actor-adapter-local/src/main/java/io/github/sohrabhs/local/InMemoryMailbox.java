@@ -3,7 +3,7 @@ package io.github.sohrabhs.local;
 
 import io.github.sohrabhs.actor.core.mailbox.Mailbox;
 
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.ArrayDeque;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -20,14 +20,21 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class InMemoryMailbox<C> implements Mailbox<C> {
 
-    private final ConcurrentLinkedQueue<C> queue = new ConcurrentLinkedQueue<>();
+    private final Object queueLock = new Object();
+    private final ArrayDeque<C> queue;
+    private final int capacity;
     private final AtomicBoolean scheduled = new AtomicBoolean(false);
     private final ExecutorService executor;
     private volatile MessageHandler<C> handler;
     private volatile boolean stopped = false;
 
-    public InMemoryMailbox(ExecutorService executor) {
+    public InMemoryMailbox(ExecutorService executor, int capacity) {
+        if (capacity <= 0) {
+            throw new IllegalArgumentException("Mailbox capacity must be positive");
+        }
         this.executor = executor;
+        this.capacity = capacity;
+        this.queue = new ArrayDeque<>(capacity);
     }
 
     @Override
@@ -35,7 +42,14 @@ public final class InMemoryMailbox<C> implements Mailbox<C> {
         if (stopped) {
             return; // silently drop — matches Akka's dead letter behavior
         }
-        queue.offer(message);
+        synchronized (queueLock) {
+            // Keep the newest observations. A slow actor must degrade by skipping stale market
+            // data, not by retaining an unbounded history until the process runs out of heap.
+            if (queue.size() == capacity) {
+                queue.removeFirst();
+            }
+            queue.addLast(message);
+        }
         scheduleProcessing();
     }
 
@@ -48,12 +62,16 @@ public final class InMemoryMailbox<C> implements Mailbox<C> {
     @Override
     public void stop() {
         this.stopped = true;
-        queue.clear();
+        synchronized (queueLock) {
+            queue.clear();
+        }
     }
 
     @Override
     public boolean hasPending() {
-        return !queue.isEmpty();
+        synchronized (queueLock) {
+            return !queue.isEmpty();
+        }
     }
 
     /**
@@ -74,7 +92,7 @@ public final class InMemoryMailbox<C> implements Mailbox<C> {
             // This prevents starvation of other actors sharing the executor.
             int processed = 0;
             C message;
-            while (!stopped && processed < 10 && (message = queue.poll()) != null) {
+            while (!stopped && processed < 10 && (message = poll()) != null) {
                 try {
                     handler.handle(message);
                 } catch (Exception e) {
@@ -87,9 +105,15 @@ public final class InMemoryMailbox<C> implements Mailbox<C> {
         } finally {
             scheduled.set(false);
             // If there are still pending messages, re-schedule
-            if (!stopped && !queue.isEmpty()) {
+            if (!stopped && hasPending()) {
                 scheduleProcessing();
             }
+        }
+    }
+
+    private C poll() {
+        synchronized (queueLock) {
+            return queue.pollFirst();
         }
     }
 }

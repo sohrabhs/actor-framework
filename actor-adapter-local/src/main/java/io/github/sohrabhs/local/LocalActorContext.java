@@ -22,18 +22,21 @@ public final class LocalActorContext<C> implements ActorContext<C> {
     private final ExecutorService executor;
     private final ConcurrentHashMap<String, ActorRef<?>> children = new ConcurrentHashMap<>();
     private final SupervisionDecider supervisionDecider;
+    private final int mailboxCapacity;
 
     public LocalActorContext(
             ActorRef<C> self,
             ActorPath path,
             ActorIdentity identity,
             ExecutorService executor,
-            SupervisionDecider supervisionDecider) {
+            SupervisionDecider supervisionDecider,
+            int mailboxCapacity) {
         this.self = self;
         this.path = path;
         this.identity = identity;
         this.executor = executor;
         this.supervisionDecider = supervisionDecider;
+        this.mailboxCapacity = mailboxCapacity;
     }
 
     @Override
@@ -55,11 +58,11 @@ public final class LocalActorContext<C> implements ActorContext<C> {
     public <M> ActorRef<M> spawn(BehaviorFactory<M> factory, String childName) {
         ActorPath childPath = path.child(childName);
 
-        InMemoryMailbox<M> mailbox = new InMemoryMailbox<>(executor);
+        InMemoryMailbox<M> mailbox = new InMemoryMailbox<>(executor, mailboxCapacity);
         LocalActorRef<M> childRef = new LocalActorRef<>(childPath, null, mailbox);
 
         LocalActorContext<M> childContext = new LocalActorContext<>(
-            childRef, childPath, null, executor, supervisionDecider
+            childRef, childPath, null, executor, supervisionDecider, mailboxCapacity
         );
 
         Behavior<M> behavior = factory.create(childContext);
@@ -108,12 +111,12 @@ public final class LocalActorContext<C> implements ActorContext<C> {
         ActorPath childPath = childIdentity.toActorPath();
 
         // 2. Create mailbox and reference
-        InMemoryMailbox<M> mailbox = new InMemoryMailbox<>(executor);
+        InMemoryMailbox<M> mailbox = new InMemoryMailbox<>(executor, mailboxCapacity);
         LocalActorRef<M> childRef = new LocalActorRef<>(childPath, childIdentity, mailbox);
 
         // 3. Create child context
         LocalActorContext<M> childContext = new LocalActorContext<>(
-            childRef, childPath, childIdentity, executor, supervisionDecider
+            childRef, childPath, childIdentity, executor, supervisionDecider, mailboxCapacity
         );
 
         // 4. Create persistent behavior using the factory

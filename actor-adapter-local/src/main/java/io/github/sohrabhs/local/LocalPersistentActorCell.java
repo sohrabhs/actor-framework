@@ -144,6 +144,7 @@ final class LocalPersistentActorCell<C, E, S> {
 
             if (shouldSnapshot && sequenceNumber > 0) {
                 snapshotStore.save(persistenceId, sequenceNumber, currentState);
+                eventStore.deleteUpTo(persistenceId, sequenceNumber);
                 eventsSinceSnapshot = 0;
                 context.log("Snapshot saved at seqNr %d", sequenceNumber);
             }

@@ -51,6 +51,20 @@ public final class InMemoryEventStore<E> implements EventStore<E> {
         }
     }
 
+    @Override
+    public void deleteUpTo(String persistenceId, long maxSequenceNumber) {
+        List<PersistedEvent<E>> journal = journals.get(persistenceId);
+        if (journal == null) {
+            return;
+        }
+        synchronized (journal) {
+            journal.removeIf(event -> event.sequenceNumber() <= maxSequenceNumber);
+            if (journal.isEmpty()) {
+                journals.remove(persistenceId, journal);
+            }
+        }
+    }
+
     /** For testing: inspect all events */
     public List<PersistedEvent<E>> allEvents(String persistenceId) {
         return loadEvents(persistenceId, -1);

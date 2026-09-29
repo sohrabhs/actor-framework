@@ -42,6 +42,7 @@ public final class LocalShardRegion<C, E, S> implements ShardRegion<C> {
     private final SnapshotStore<S> snapshotStore;
     private final ExecutorService executor;
     private final SupervisionDecider supervisionDecider;
+    private final int mailboxCapacity;
     private final ConcurrentHashMap<String, EntityEntry<C>> entities = new ConcurrentHashMap<>();
 
     public LocalShardRegion(
@@ -50,13 +51,15 @@ public final class LocalShardRegion<C, E, S> implements ShardRegion<C> {
             EventStore<E> eventStore,
             SnapshotStore<S> snapshotStore,
             ExecutorService executor,
-            SupervisionDecider supervisionDecider) {
+            SupervisionDecider supervisionDecider,
+            int mailboxCapacity) {
         this.typeName = typeName;
         this.behaviorFactory = behaviorFactory;
         this.eventStore = eventStore;
         this.snapshotStore = snapshotStore;
         this.executor = executor;
         this.supervisionDecider = supervisionDecider;
+        this.mailboxCapacity = mailboxCapacity;
     }
 
     @Override
@@ -119,12 +122,12 @@ public final class LocalShardRegion<C, E, S> implements ShardRegion<C> {
         ActorPath actorPath = identity.toActorPath();
 
         // Create mailbox
-        InMemoryMailbox<C> mailbox = new InMemoryMailbox<>(executor);
+        InMemoryMailbox<C> mailbox = new InMemoryMailbox<>(executor, mailboxCapacity);
         LocalActorRef<C> ref = new LocalActorRef<>(actorPath, identity, mailbox);
 
         // Create context
         LocalActorContext<C> context = new LocalActorContext<>(
-                ref, actorPath, identity, executor, supervisionDecider
+                ref, actorPath, identity, executor, supervisionDecider, mailboxCapacity
         );
 
         // Create persistent behavior
