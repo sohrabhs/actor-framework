@@ -55,7 +55,8 @@ public final class LocalActorContext<C> implements ActorContext<C> {
     }
 
     @Override
-    public <M> ActorRef<M> spawn(BehaviorFactory<M> factory, String childName) {
+    public synchronized <M> ActorRef<M> spawn(BehaviorFactory<M> factory, String childName) {
+        checkName(childName);
         ActorPath childPath = path.child(childName);
 
         InMemoryMailbox<M> mailbox = new InMemoryMailbox<>(executor, mailboxCapacity);
@@ -65,12 +66,12 @@ public final class LocalActorContext<C> implements ActorContext<C> {
             childRef, childPath, null, executor, supervisionDecider, mailboxCapacity
         );
 
+        childRef.onStop(() -> { childContext.close(); children.remove(childName, childRef); });
         Behavior<M> behavior = factory.create(childContext);
 
-        LocalActorCell<M> cell = new LocalActorCell<>(childRef, childContext, behavior, supervisionDecider);
-        mailbox.start(cell::processMessage);
-
+        LocalActorCell<M> cell = new LocalActorCell<>(childRef, childContext, behavior, supervisionDecider, factory);
         children.put(childName, childRef);
+        mailbox.start(cell::processMessage);
         return childRef;
     }
 
@@ -95,12 +96,13 @@ public final class LocalActorContext<C> implements ActorContext<C> {
      * the child's persistenceId becomes: "VwapStrategy-STR-ETH-2026-twap-executor"
      */
     @Override
-    public <M, E, S> ActorRef<M> spawnPersistent(
+    public synchronized <M, E, S> ActorRef<M> spawnPersistent(
             PersistentBehaviorFactory<M, E, S> persistentBehaviorFactory,
             String childName,
             EventStore<E> eventStore,
             SnapshotStore<S> snapshotStore) {
 
+        checkName(childName);
         // 1. Derive child identity from parent context
         String parentType = identity != null ? identity.typeName() : path.name();
         String parentId = identity != null ? identity.entityId() : path.name();
@@ -108,7 +110,7 @@ public final class LocalActorContext<C> implements ActorContext<C> {
             parentType + "-Child",
             parentId + "-" + childName
         );
-        ActorPath childPath = childIdentity.toActorPath();
+        ActorPath childPath = path.child(childName);
 
         // 2. Create mailbox and reference
         InMemoryMailbox<M> mailbox = new InMemoryMailbox<>(executor, mailboxCapacity);
@@ -119,6 +121,7 @@ public final class LocalActorContext<C> implements ActorContext<C> {
             childRef, childPath, childIdentity, executor, supervisionDecider, mailboxCapacity
         );
 
+        childRef.onStop(() -> { childContext.close(); children.remove(childName, childRef); });
         // 4. Create persistent behavior using the factory
         PersistentBehavior<M, E, S> persistentBehavior = persistentBehaviorFactory.create(childName);
 
@@ -136,13 +139,30 @@ public final class LocalActorContext<C> implements ActorContext<C> {
         return childRef;
     }
 
-    @Override
-    public void stop(ActorRef<?> child) {
-        String childName = child.path().name();
-        ActorRef<?> removed = children.remove(childName);
-        if (removed instanceof LocalActorRef) {
-            ((LocalActorRef<?>) removed).mailbox().stop();
+    private boolean stopped;
+
+    private void checkName(String name) {
+        if (stopped) throw new IllegalStateException("Parent is stopped");
+        if (name == null || name.isBlank() || name.contains("/")) throw new IllegalArgumentException("Invalid child name");
+        if (children.containsKey(name)) throw new IllegalArgumentException("Duplicate child: " + name);
+    }
+
+    synchronized void stopChildren() {
+        for (ActorRef<?> child : children.values().toArray(new ActorRef<?>[0])) {
+            ((LocalActorRef<?>) child).stop();
         }
+        children.clear();
+    }
+
+    synchronized void close() { stopped = true; stopChildren(); }
+
+    @Override
+    public synchronized void stop(ActorRef<?> child) {
+        children.entrySet().removeIf(entry -> {
+            if (entry.getValue() != child) return false;
+            ((LocalActorRef<?>) child).stop();
+            return true;
+        });
     }
 
     @Override

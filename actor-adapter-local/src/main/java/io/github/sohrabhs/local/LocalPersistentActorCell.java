@@ -157,7 +157,7 @@ final class LocalPersistentActorCell<C, E, S> {
             // Handle stop/passivation
             if (effect.shouldStop()) {
                 context.log("Actor stopping via Effect.stop() (passivation)");
-                self.mailbox().stop();
+                self.stop();
                 onSelfStop.run();
             }
 
@@ -175,7 +175,7 @@ final class LocalPersistentActorCell<C, E, S> {
                 break;
             case STOP:
                 context.log("Persistent actor stopping due to: %s", e.getMessage());
-                self.mailbox().stop();
+                self.stop();
                 onSelfStop.run();
                 break;
             case RESUME:
