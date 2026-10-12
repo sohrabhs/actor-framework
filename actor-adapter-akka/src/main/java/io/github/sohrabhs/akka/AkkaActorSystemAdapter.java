@@ -29,7 +29,8 @@ public final class AkkaActorSystemAdapter implements ActorSystem {
         this.config = config;
         this.akkaSystem = akka.actor.typed.ActorSystem.create(
             Behaviors.empty(),
-            config.systemName()
+            config.systemName(),
+            com.typesafe.config.ConfigFactory.parseString("actor-framework.priority-mailbox.mailbox-capacity=" + config.defaultMailboxCapacity()).withFallback(com.typesafe.config.ConfigFactory.load())
         );
     }
 
@@ -42,7 +43,7 @@ public final class AkkaActorSystemAdapter implements ActorSystem {
     @Override
     public <C> ActorRef<C> spawn(BehaviorFactory<C> factory, String name) {
         akka.actor.typed.Behavior<C> akkaBehavior = AkkaBehaviorBridge.toBehavior(factory);
-        akka.actor.typed.ActorRef<C> akkaRef = akkaSystem.systemActorOf(akkaBehavior, name, akka.actor.typed.Props.empty());
+        akka.actor.typed.ActorRef<C> akkaRef = akkaSystem.systemActorOf(akkaBehavior, name, akka.actor.typed.MailboxSelector.fromConfig("actor-framework.priority-mailbox"));
         return new AkkaActorRefAdapter<>(akkaRef);
     }
 
@@ -54,7 +55,7 @@ public final class AkkaActorSystemAdapter implements ActorSystem {
         akka.actor.typed.Behavior<C> supervised = akka.actor.typed.javadsl.Behaviors.supervise(akkaBehavior)
             .onFailure(Exception.class, mapStrategy(decider));
 
-        akka.actor.typed.ActorRef<C> akkaRef = akkaSystem.systemActorOf(supervised, name, akka.actor.typed.Props.empty());
+        akka.actor.typed.ActorRef<C> akkaRef = akkaSystem.systemActorOf(supervised, name, akka.actor.typed.MailboxSelector.fromConfig("actor-framework.priority-mailbox"));
         return new AkkaActorRefAdapter<>(akkaRef);
     }
 

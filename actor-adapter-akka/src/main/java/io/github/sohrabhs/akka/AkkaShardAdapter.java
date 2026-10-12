@@ -57,7 +57,7 @@ public final class AkkaShardAdapter<C> implements ShardRegion<C> {
                     knownEntities.add(entityId);
                     PersistentBehavior<C, ?, ?> ourBehavior = behaviorFactory.apply(entityId);
                     return AkkaPersistenceBridge.toBehavior(ourBehavior);
-                })
+                }).withEntityProps(akka.actor.typed.MailboxSelector.fromConfig("actor-framework.priority-mailbox"))
         );
     }
 

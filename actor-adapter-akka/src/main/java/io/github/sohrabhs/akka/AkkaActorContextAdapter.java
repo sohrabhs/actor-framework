@@ -38,7 +38,7 @@ public final class AkkaActorContextAdapter<C> implements ActorContext<C> {
     @Override
     public <M> ActorRef<M> spawn(BehaviorFactory<M> factory, String childName) {
         akka.actor.typed.Behavior<M> akkaBehavior = AkkaBehaviorBridge.toBehavior(factory);
-        akka.actor.typed.ActorRef<M> akkaRef = akkaCtx.spawn(akkaBehavior, childName);
+        akka.actor.typed.ActorRef<M> akkaRef = akkaCtx.spawn(akkaBehavior, childName, akka.actor.typed.MailboxSelector.fromConfig("actor-framework.priority-mailbox"));
         return new AkkaActorRefAdapter<>(akkaRef);
     }
 
@@ -74,7 +74,7 @@ public final class AkkaActorContextAdapter<C> implements ActorContext<C> {
         akka.actor.typed.Behavior<M> akkaBehavior = AkkaPersistenceBridge.toBehavior(ourBehavior);
 
         // Spawn the actor in Akka
-        akka.actor.typed.ActorRef<M> akkaRef = akkaCtx.spawn(akkaBehavior, childName);
+        akka.actor.typed.ActorRef<M> akkaRef = akkaCtx.spawn(akkaBehavior, childName, akka.actor.typed.MailboxSelector.fromConfig("actor-framework.priority-mailbox"));
 
         return new AkkaActorRefAdapter<>(akkaRef);
     }
@@ -88,9 +88,14 @@ public final class AkkaActorContextAdapter<C> implements ActorContext<C> {
 
     @Override
     public <M> ActorRef<M> getChild(String childName) {
-        // Akka Typed doesn't have direct child lookup by name in the public API.
-        // In practice, you'd track children in a Map within the behavior.
-        return null;
+        return akkaCtx.getChild(childName).map(ref -> new AkkaActorRefAdapter<M>(ref.unsafeUpcast())).orElse(null);
+    }
+
+    private final java.util.List<Runnable> stopHooks = new java.util.ArrayList<>();
+    @Override public void onStop(Runnable cleanup) { stopHooks.add(java.util.Objects.requireNonNull(cleanup)); }
+    void stopped() {
+        for (Runnable hook : stopHooks) { try { hook.run(); } catch (RuntimeException e) { akkaCtx.getLog().error("Cleanup failed", e); } }
+        stopHooks.clear();
     }
 
     @Override

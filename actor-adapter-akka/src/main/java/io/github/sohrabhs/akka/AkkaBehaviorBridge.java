@@ -57,6 +57,7 @@ public final class AkkaBehaviorBridge {
         @Override
         public Receive<C> createReceive() {
             return newReceiveBuilder()
+                .onSignal(akka.actor.typed.PostStop.class, signal -> { ((AkkaActorContextAdapter<C>) ourContext).stopped(); return this; })
                 .onAnyMessage(this::onMessage)
                 .build();
         }

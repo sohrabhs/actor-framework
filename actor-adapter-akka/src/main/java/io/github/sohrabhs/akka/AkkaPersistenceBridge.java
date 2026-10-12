@@ -56,7 +56,7 @@ public final class AkkaPersistenceBridge {
                     return newCommandHandlerBuilder()
                             .forAnyState()
                             .onAnyCommand((state, command) -> translateEffect(
-                                            ourBehavior.onCommand(state, command),
+                                            commandEffect(ourBehavior, ourContext, state, command),
                                             state, Effect()
                                     )
                             );
@@ -72,6 +72,7 @@ public final class AkkaPersistenceBridge {
                 @Override
                 public SignalHandler<S> signalHandler() {
                     return newSignalHandlerBuilder()
+                            .onSignal(akka.actor.typed.PostStop.class, (state, signal) -> ((AkkaActorContextAdapter<C>) ourContext).stopped())
                             .onSignal(
                                     akka.persistence.typed.RecoveryCompleted.instance(),
                                     state -> {
@@ -88,6 +89,15 @@ public final class AkkaPersistenceBridge {
                 }
             };
         });
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <C,E,S> io.github.sohrabhs.actor.core.persistence.Effect<E,S> commandEffect(
+            PersistentBehavior<C,E,S> behavior, ActorContext<C> context, S state, C command) {
+        if (behavior instanceof io.github.sohrabhs.actor.core.persistence.PersistentBehaviorWithContext<?,?,?> contextual) {
+            return ((io.github.sohrabhs.actor.core.persistence.PersistentBehaviorWithContext<C,E,S>) contextual).onCommandWithContext(context,state,command);
+        }
+        return behavior.onCommand(state,command);
     }
 
     /**
