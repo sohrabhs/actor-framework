@@ -123,18 +123,15 @@ public final class LocalActorContext<C> implements ActorContext<C> {
 
         childRef.onStop(() -> { childContext.close(); children.remove(childName, childRef); });
         // 4. Create persistent behavior using the factory
-        PersistentBehavior<M, E, S> persistentBehavior = persistentBehaviorFactory.create(childName);
+        PersistentBehavior<M, E, S> persistentBehavior = io.github.sohrabhs.actor.core.persistence.PersistentBehaviors.withIdentity(persistentBehaviorFactory.create(childName), new ActorIdentity("child",childPath.toStringPath()));
 
         // 5. Create persistent actor cell (this handles recovery automatically)
         LocalPersistentActorCell<M, E, S> cell = new LocalPersistentActorCell<>(
             childRef, childContext, persistentBehavior, eventStore, snapshotStore, supervisionDecider
         );
 
-        // 6. Wire mailbox to cell
-        mailbox.start(cell::processMessage);
-
-        // 7. Track child
         children.put(childName, childRef);
+        mailbox.start(cell::processMessage);
 
         return childRef;
     }
@@ -147,32 +144,34 @@ public final class LocalActorContext<C> implements ActorContext<C> {
         if (children.containsKey(name)) throw new IllegalArgumentException("Duplicate child: " + name);
     }
 
-    synchronized void stopChildren() {
-        for (ActorRef<?> child : children.values().toArray(new ActorRef<?>[0])) {
-            ((LocalActorRef<?>) child).stop();
-        }
-        children.clear();
+    void stopChildren() {
+        ActorRef<?>[] snapshot;
+        synchronized (this) { snapshot=children.values().toArray(new ActorRef<?>[0]); children.clear(); }
+        for (ActorRef<?> child:snapshot) ((LocalActorRef<?>) child).stop();
     }
 
     private final java.util.List<Runnable> stopHooks = new java.util.ArrayList<>();
-    @Override public synchronized void onStop(Runnable cleanup) {
-        if (stopped) cleanup.run(); else stopHooks.add(java.util.Objects.requireNonNull(cleanup));
+    @Override public void onStop(Runnable cleanup) {
+        java.util.Objects.requireNonNull(cleanup);
+        synchronized (this) { if (!stopped) { stopHooks.add(cleanup); return; } }
+        cleanup.run();
     }
-    synchronized void close() {
-        if (stopped) return;
-        stopped = true;
+    void close() {
+        java.util.List<Runnable> hooks;
+        synchronized (this) {
+            if (stopped) return;
+            stopped=true; hooks=new java.util.ArrayList<>(stopHooks); stopHooks.clear();
+        }
         stopChildren();
-        for (Runnable hook : stopHooks) { try { hook.run(); } catch (RuntimeException e) { log("Cleanup failed: %s", e); } }
-        stopHooks.clear();
+        for (Runnable hook:hooks) { try { hook.run(); } catch (RuntimeException e) { log("Cleanup failed: %s",e); } }
     }
 
-    @Override
-    public synchronized void stop(ActorRef<?> child) {
-        children.entrySet().removeIf(entry -> {
-            if (entry.getValue() != child) return false;
-            ((LocalActorRef<?>) child).stop();
-            return true;
-        });
+    @Override public void stop(ActorRef<?> child) {
+        for (var entry:children.entrySet()) {
+            if (entry.getValue()==child && children.remove(entry.getKey(),child)) {
+                ((LocalActorRef<?>) child).stop(); return;
+            }
+        }
     }
 
     @Override

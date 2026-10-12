@@ -68,7 +68,7 @@ public final class AkkaActorContextAdapter<C> implements ActorContext<C> {
             SnapshotStore<S> snapshotStore) { // Ignored in Akka adapter
 
         // Create our PersistentBehavior
-        PersistentBehavior<M, E, S> ourBehavior = persistentBehaviorFactory.create(childName);
+        PersistentBehavior<M, E, S> ourBehavior = io.github.sohrabhs.actor.core.persistence.PersistentBehaviors.withIdentity(persistentBehaviorFactory.create(childName), new ActorIdentity("child",path().child(childName).toStringPath()));
 
         // Bridge to Akka EventSourcedBehavior
         akka.actor.typed.Behavior<M> akkaBehavior = AkkaPersistenceBridge.toBehavior(ourBehavior);
