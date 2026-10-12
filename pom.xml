@@ -6,14 +6,14 @@
 
     <groupId>io.github.sohrabhs</groupId>
     <artifactId>actor-framework</artifactId>
-    <version>1.0.0-alpha-3</version>
+    <version>1.0.0-nested-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <modules>
         <module>actor-core</module>
         <module>actor-adapter-local</module>
         <module>actor-adapter-akka</module>
-<!--        <module>example</module>-->
+        <module>example</module>
     </modules>
 
     <properties>
