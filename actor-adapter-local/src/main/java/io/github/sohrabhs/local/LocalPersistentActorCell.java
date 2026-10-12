@@ -212,10 +212,10 @@ final class LocalPersistentActorCell<C, E, S> {
 
         @Override
         public Effect<E, S> onCommand(S state, C command) {
-            if (delegate instanceof PersistentBehaviorWithContext) {
+            if (delegate instanceof io.github.sohrabhs.actor.core.persistence.PersistentBehaviorWithContext) {
                 @SuppressWarnings("unchecked")
-                PersistentBehaviorWithContext<C, E, S> contextAware =
-                        (PersistentBehaviorWithContext<C, E, S>) delegate;
+                io.github.sohrabhs.actor.core.persistence.PersistentBehaviorWithContext<C, E, S> contextAware =
+                        (io.github.sohrabhs.actor.core.persistence.PersistentBehaviorWithContext<C, E, S>) delegate;
                 return contextAware.onCommandWithContext(context, state, command);
             }
             return delegate.onCommand(state, command);

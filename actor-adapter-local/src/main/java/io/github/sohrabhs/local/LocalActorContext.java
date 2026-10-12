@@ -154,7 +154,17 @@ public final class LocalActorContext<C> implements ActorContext<C> {
         children.clear();
     }
 
-    synchronized void close() { stopped = true; stopChildren(); }
+    private final java.util.List<Runnable> stopHooks = new java.util.ArrayList<>();
+    @Override public synchronized void onStop(Runnable cleanup) {
+        if (stopped) cleanup.run(); else stopHooks.add(java.util.Objects.requireNonNull(cleanup));
+    }
+    synchronized void close() {
+        if (stopped) return;
+        stopped = true;
+        stopChildren();
+        for (Runnable hook : stopHooks) { try { hook.run(); } catch (RuntimeException e) { log("Cleanup failed: %s", e); } }
+        stopHooks.clear();
+    }
 
     @Override
     public synchronized void stop(ActorRef<?> child) {

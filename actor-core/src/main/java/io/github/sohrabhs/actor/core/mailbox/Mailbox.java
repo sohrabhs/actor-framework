@@ -11,7 +11,7 @@ package io.github.sohrabhs.actor.core.mailbox;
  * - Akka's built-in dispatchers and mailboxes
  *
  * Key guarantees:
- * - Messages from the same sender are delivered in order
+ * - Messages within the same priority lane are delivered in admission order
  * - Only one message is processed at a time (single-threaded illusion)
  *
  * @param <C> Command type
@@ -23,6 +23,8 @@ public interface Mailbox<C> {
      * This must be thread-safe (can be called from any thread).
      */
     void enqueue(C message);
+
+    default Delivery tryEnqueue(C message) { enqueue(message); return Delivery.SENT_UNCONFIRMED; }
 
     /**
      * Start processing messages.

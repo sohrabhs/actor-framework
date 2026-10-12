@@ -39,6 +39,9 @@ public final class LocalActorRef<C> implements ActorRef<C> {
     }
 
     @Override
+    public io.github.sohrabhs.actor.core.mailbox.Delivery tryTell(C message) { return mailbox.tryEnqueue(message); }
+
+    @Override
     public ActorPath path() {
         return path;
     }

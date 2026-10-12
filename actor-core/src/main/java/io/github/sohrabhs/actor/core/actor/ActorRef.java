@@ -21,6 +21,12 @@ public interface ActorRef<C> {
      */
     void tell(C message);
 
+    /** Non-blocking admission. Adapters unable to observe admission report SENT_UNCONFIRMED. */
+    default io.github.sohrabhs.actor.core.mailbox.Delivery tryTell(C message) {
+        tell(message);
+        return io.github.sohrabhs.actor.core.mailbox.Delivery.SENT_UNCONFIRMED;
+    }
+
     /**
      * The path of the actor this ref points to.
      */
