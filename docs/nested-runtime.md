@@ -18,3 +18,5 @@ java -cp example/target/classes:actor-core/target/classes:actor-adapter-local/ta
 ```
 
 The example admits at most 32 requests in flight, collects `3126250`, then stops the actor tree. The adapter tests exercise concurrent producers, bounded overflow without eviction, priority/FIFO, fairness, rejected executor recovery, subtree cleanup, restart and Akka priority selection. These are JVM correctness checks, not a phone latency or thermal benchmark.
+
+Local persistent behaviors can override `failureStrategy`; null retains the system decider. The engine selects STOP for its composed parent facade, closing descendants instead of replaying trading side effects after a handler failure. This Local override does not claim full Akka supervision parity.

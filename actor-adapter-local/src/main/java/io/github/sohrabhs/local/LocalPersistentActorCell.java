@@ -167,7 +167,8 @@ final class LocalPersistentActorCell<C, E, S> {
     }
 
     private void handleFailure(Exception e, C command) {
-        SupervisionStrategy strategy = supervisionDecider.decide(e);
+        SupervisionStrategy strategy = behavior.failureStrategy(e);
+        if (strategy == null) strategy = supervisionDecider.decide(e);
         switch (strategy) {
             case RESTART:
                 context.log("Persistent actor restarting due to: %s. Re-recovering...", e.getMessage());

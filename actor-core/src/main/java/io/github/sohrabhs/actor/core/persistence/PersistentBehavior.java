@@ -36,6 +36,10 @@ public interface PersistentBehavior<C, E, S> {
      */
     ActorIdentity identity();
 
+    /** Optional Local supervision override. Null preserves the configured system decider. */
+    default io.github.sohrabhs.actor.core.actor.SupervisionStrategy failureStrategy(Throwable failure) { return null; }
+
+
     /**
      * The initial state when no events have been replayed.
      */

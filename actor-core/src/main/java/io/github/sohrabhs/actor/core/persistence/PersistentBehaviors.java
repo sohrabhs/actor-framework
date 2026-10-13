@@ -8,6 +8,7 @@ public final class PersistentBehaviors {
     public static <C,E,S> PersistentBehavior<C,E,S> withIdentity(PersistentBehavior<C,E,S> delegate,ActorIdentity identity) {
         return new PersistentBehaviorWithContext<>() {
             public ActorIdentity identity() { return identity; }
+            public SupervisionStrategy failureStrategy(Throwable failure) { return delegate.failureStrategy(failure); }
             public S emptyState() { return delegate.emptyState(); }
             @SuppressWarnings("unchecked")
             public Effect<E,S> onCommandWithContext(ActorContext<C> context,S state,C command) {
