@@ -2,6 +2,8 @@
 
 تاریخ: ۲۰ مهر ۱۴۰۵ / 2026-10-12
 
+> بخش‌های ۱ تا ۸ وضعیت مبنای بررسی در ۱۲ اکتبر را توصیف می‌کنند. پیاده‌سازی بعدی در `nested-algorithms-implementation.md` گزارش شده است؛ توضیحات «فعلی» در این بخش‌ها به نسخهٔ پیش از تغییرات اشاره دارند.
+
 ## نتیجهٔ اصلی
 
 ۱. **هر اکتور میل‌باکس مستقل دارد.** در Local، صف پیام مشترک بین همهٔ اکتورها وجود ندارد؛ Executor و نخ‌های پردازش مشترک‌اند. صف کارِ Executor را نباید با میل‌باکس اکتورها یکی دانست.
@@ -264,7 +266,7 @@ state بازیابی immutable/کپی‌شده باشد. `onEvent` فقط state 
 | `AndroidAlgorithmTradingPlatform/app/src/main/AndroidManifest.xml` | foreground service از نوع specialUse |
 | `actor-framework/actor-adapter-local/src/test/java/io/github/sohrabhs/local/InMemoryMailboxTest.java` | سه تست اجراشدهٔ mailbox |
 
-این کار بررسی و طراحی است؛ کد runtime یا SDK تغییر داده نشده است.
+در مرحلهٔ نخست فقط بررسی و طراحی انجام شد. پس از درخواست دوم، runtime و SDK نیز تغییر کردند؛ گزارش پیاده‌سازی را جداگانه ببینید.
 
 ## ۹. نیازمندی‌های تکمیلی پیاده‌سازی (درخواست دوم)
 
