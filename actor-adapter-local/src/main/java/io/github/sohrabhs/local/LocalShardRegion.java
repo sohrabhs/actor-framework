@@ -69,7 +69,8 @@ public final class LocalShardRegion<C, E, S> implements ShardRegion<C> {
     }
 
     @Override
-    public ActorRef<C> entityRefFor(String entityId) {
+    public synchronized ActorRef<C> entityRefFor(String entityId) {
+        if (closed) throw new IllegalStateException("Region closed");
         EntityEntry<C> entry = entities.computeIfAbsent(entityId, this::createEntityActor);
         return entry.ref;
     }
@@ -78,11 +79,14 @@ public final class LocalShardRegion<C, E, S> implements ShardRegion<C> {
     public boolean stop(String entityId) {
         EntityEntry<C> removed = entities.remove(entityId);
         if (removed != null) {
-            removed.ref.mailbox().stop();
+            removed.ref.stop();
             return true;
         }
         return false;
     }
+
+    private boolean closed;
+    synchronized void close() { closed = true; stopAll(); }
 
     @Override
     public int stopAll() {
@@ -130,13 +134,15 @@ public final class LocalShardRegion<C, E, S> implements ShardRegion<C> {
                 ref, actorPath, identity, executor, supervisionDecider, mailboxCapacity
         );
 
+        ref.onStop(() -> { context.close(); entities.computeIfPresent(entityId, (id, entry) -> entry.ref == ref ? null : entry); });
+
         // Create persistent behavior
         PersistentBehavior<C, E, S> persistentBehavior = behaviorFactory.create(entityId);
 
         // Create persistent actor cell with shard region callback for self-stop
         LocalPersistentActorCell<C, E, S> cell = new LocalPersistentActorCell<>(
                 ref, context, persistentBehavior, eventStore, snapshotStore,
-                supervisionDecider, () -> onEntitySelfStop(entityId)
+                supervisionDecider, () -> {}
         );
 
         // Wire mailbox to cell

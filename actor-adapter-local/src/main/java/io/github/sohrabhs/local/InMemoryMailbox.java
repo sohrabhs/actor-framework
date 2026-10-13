@@ -1,139 +1,119 @@
 package io.github.sohrabhs.local;
 
-
-import io.github.sohrabhs.actor.core.mailbox.Mailbox;
-import io.github.sohrabhs.actor.core.mailbox.UrgentMessage;
-
+import io.github.sohrabhs.actor.core.mailbox.*;
 import java.util.ArrayDeque;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.RejectedExecutionException;
 
-/**
- * Thread-safe, single-consumer mailbox using a lock-free queue.
- *
- * DESIGN REASONING:
- * - ConcurrentLinkedQueue for lock-free enqueue from any thread
- * - Single-threaded processing via AtomicBoolean scheduling flag
- * - This guarantees: at most one message is processed at a time
- * - Android-friendly: no heavy locking, no Java 8+ API beyond ConcurrentLinkedQueue
- *
- * This is the key guarantee of the Actor Model: no concurrent processing within one actor.
- */
+/** Bounded, non-blocking admission, one consumer, FIFO per lane. Never evicts accepted traffic. */
 public final class InMemoryMailbox<C> implements Mailbox<C> {
-
-    private final Object queueLock = new Object();
-    private final ArrayDeque<C> queue;
-    private final ArrayDeque<C> urgentQueue;
-    private final int capacity;
-    private final AtomicBoolean scheduled = new AtomicBoolean(false);
+    private final Object lock = new Object();
+    // Allocate on demand, not capacity-sized arrays for thousands of idle actors.
+    private final ArrayDeque<C> normal = new ArrayDeque<>();
+    private final ArrayDeque<C> priority = new ArrayDeque<>();
     private final ExecutorService executor;
-    private volatile MessageHandler<C> handler;
-    private volatile boolean stopped = false;
+    private final int capacity;
+    private final int reserve;
+    private boolean scheduled;
+    private boolean stopped;
+    private int priorityRun;
+    private MessageHandler<C> handler;
+    private long accepted, rejected, processed, discardedOnStop;
 
     public InMemoryMailbox(ExecutorService executor, int capacity) {
-        if (capacity <= 0) {
-            throw new IllegalArgumentException("Mailbox capacity must be positive");
-        }
-        this.executor = executor;
+        if (capacity <= 0) throw new IllegalArgumentException("Mailbox capacity must be positive");
+        this.executor = Objects.requireNonNull(executor);
         this.capacity = capacity;
-        this.queue = new ArrayDeque<>(capacity);
-        this.urgentQueue = new ArrayDeque<>();
+        this.reserve = capacity >= 16 ? Math.max(1, capacity / 8) : 0;
     }
 
-    @Override
-    public void enqueue(C message) {
-        if (stopped) {
-            return; // silently drop — matches Akka's dead letter behavior
+    @Override public void enqueue(C message) {
+        Delivery result = tryEnqueue(message);
+        if (result != Delivery.ACCEPTED) throw new DeliveryException(result);
+    }
+
+    @Override public Delivery tryEnqueue(C message) {
+        Objects.requireNonNull(message, "message");
+        synchronized (lock) {
+            if (stopped) { rejected++; return Delivery.STOPPED; }
+            boolean high = message instanceof UrgentMessage ||
+                    (message instanceof PriorityMessage p && p.highPriority());
+            int size = normal.size() + priority.size();
+            if (size >= capacity || (!high && size >= capacity - reserve)) {
+                rejected++; return Delivery.FULL;
+            }
+            ArrayDeque<C> lane = high ? priority : normal;
+            lane.addLast(message);
+            if (!scheduleLocked()) {
+                lane.removeLast(); rejected++;
+                return Delivery.EXECUTOR_UNAVAILABLE;
+            }
+            accepted++;
+            return Delivery.ACCEPTED;
         }
-        synchronized (queueLock) {
-            if (message instanceof UrgentMessage) {
-                if (sizeLocked() == capacity) {
-                    if (!queue.isEmpty()) queue.removeFirst();
-                    else urgentQueue.removeFirst();
+    }
+
+    @Override public void start(MessageHandler<C> handler) {
+        synchronized (lock) {
+            if (this.handler != null) throw new IllegalStateException("Mailbox already started");
+            this.handler = Objects.requireNonNull(handler);
+            if (!scheduleLocked()) throw new DeliveryException(Delivery.EXECUTOR_UNAVAILABLE);
+        }
+    }
+
+    @Override public void stop() {
+        synchronized (lock) {
+            stopped = true;
+            discardedOnStop += normal.size() + priority.size();
+            normal.clear(); priority.clear();
+        }
+    }
+
+    @Override public boolean hasPending() {
+        synchronized (lock) { return !normal.isEmpty() || !priority.isEmpty(); }
+    }
+
+    public record Stats(int depth, long accepted, long rejected, long processed, long discardedOnStop) {}
+    public Stats stats() {
+        synchronized (lock) { return new Stats(normal.size() + priority.size(), accepted, rejected, processed, discardedOnStop); }
+    }
+
+    private boolean scheduleLocked() {
+        if (scheduled || stopped || handler == null || !hasPending()) return true;
+        scheduled = true;
+        try { executor.execute(this::drain); return true; }
+        catch (RejectedExecutionException e) { scheduled = false; return false; }
+    }
+
+    private C pollLocked() {
+        if (!priority.isEmpty() && (priorityRun < 8 || normal.isEmpty())) {
+            priorityRun++; return priority.removeFirst();
+        }
+        priorityRun = 0;
+        return normal.pollFirst();
+    }
+
+    private void drain() {
+        // Keep ownership if shutdown rejects rescheduling: already admitted messages are not lost.
+        for (;;) {
+            long deadline = System.nanoTime() + 2_000_000;
+            for (int i = 0; i < 32; i++) {
+                C next;
+                synchronized (lock) {
+                    if (stopped || (next = pollLocked()) == null) { scheduled = false; return; }
                 }
-                urgentQueue.addLast(message);
-            } else {
-                // Keep the newest observations. A slow actor must degrade by skipping stale market
-                // data, not by retaining an unbounded history until the process runs out of heap.
-                if (sizeLocked() == capacity) {
-                    // Lifecycle controls already occupy the whole mailbox. Never evict one for
-                    // ordinary traffic; the next ordinary observation can safely be skipped.
-                    if (queue.isEmpty()) return;
-                    queue.removeFirst();
-                }
-                queue.addLast(message);
+                try { handler.handle(next); }
+                catch (Exception e) { System.err.println("Actor handler failed: " + e); }
+                finally { synchronized (lock) { processed++; } }
+                if (System.nanoTime() >= deadline) break;
+            }
+            synchronized (lock) {
+                scheduled = false;
+                if (stopped || !hasPending()) return;
+                if (scheduleLocked()) return;
+                scheduled = true;
             }
         }
-        scheduleProcessing();
-    }
-
-    @Override
-    public void start(MessageHandler<C> handler) {
-        this.handler = handler;
-        scheduleProcessing();
-    }
-
-    @Override
-    public void stop() {
-        this.stopped = true;
-        synchronized (queueLock) {
-            queue.clear();
-            urgentQueue.clear();
-        }
-    }
-
-    @Override
-    public boolean hasPending() {
-        synchronized (queueLock) {
-            return !urgentQueue.isEmpty() || !queue.isEmpty();
-        }
-    }
-
-    /**
-     * Ensures only one processing task is scheduled at a time.
-     * This is the mechanism that provides single-threaded illusion.
-     */
-    private void scheduleProcessing() {
-        if (handler == null || stopped) return;
-
-        if (scheduled.compareAndSet(false, true)) {
-            executor.submit(this::processMessages);
-        }
-    }
-
-    private void processMessages() {
-        try {
-            // Process a batch of messages (up to 10) before re-scheduling.
-            // This prevents starvation of other actors sharing the executor.
-            int processed = 0;
-            C message;
-            while (!stopped && processed < 10 && (message = poll()) != null) {
-                try {
-                    handler.handle(message);
-                } catch (Exception e) {
-                    // Supervision handles this — for now, log and continue
-                    System.err.println("[Mailbox] Exception processing message: " + e.getMessage());
-                    e.printStackTrace();
-                }
-                processed++;
-            }
-        } finally {
-            scheduled.set(false);
-            // If there are still pending messages, re-schedule
-            if (!stopped && hasPending()) {
-                scheduleProcessing();
-            }
-        }
-    }
-
-    private C poll() {
-        synchronized (queueLock) {
-            C urgent = urgentQueue.pollFirst();
-            return urgent != null ? urgent : queue.pollFirst();
-        }
-    }
-
-    private int sizeLocked() {
-        return urgentQueue.size() + queue.size();
     }
 }

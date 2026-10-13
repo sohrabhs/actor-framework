@@ -32,7 +32,9 @@ public final class LocalActorSystem implements ActorSystem {
     }
 
     @Override
-    public <C> ActorRef<C> spawn(BehaviorFactory<C> factory, String name, SupervisionDecider decider) {
+    public synchronized <C> ActorRef<C> spawn(BehaviorFactory<C> factory, String name, SupervisionDecider decider) {
+        checkRunning();
+        if (topLevelActors.containsKey(name)) throw new IllegalArgumentException("Duplicate actor: " + name);
         ActorPath path = ActorPath.root().child(name);
 
         InMemoryMailbox<C> mailbox = new InMemoryMailbox<>(executor, config.defaultMailboxCapacity());
@@ -42,22 +44,30 @@ public final class LocalActorSystem implements ActorSystem {
             ref, path, null, executor, decider, config.defaultMailboxCapacity()
         );
 
-        Behavior<C> behavior = factory.create(context);
-        LocalActorCell<C> cell = new LocalActorCell<>(ref, context, behavior, decider);
+        ref.onStop(() -> { context.close(); topLevelActors.remove(name, ref); });
+        try {
+            Behavior<C> behavior = factory.create(context);
+            LocalActorCell<C> cell = new LocalActorCell<>(ref, context, behavior, decider, factory);
 
-        mailbox.start(cell::processMessage);
-        topLevelActors.put(name, ref);
+            topLevelActors.put(name, ref);
+            mailbox.start(cell::processMessage);
 
-        return ref;
+            return ref;
+        } catch (RuntimeException | Error failure) {
+            ref.stop();
+            throw failure;
+        }
     }
 
     @Override
-    public <C, E, S> ShardRegion<C> initShardRegion(
+    public synchronized <C, E, S> ShardRegion<C> initShardRegion(
             String typeName,
             PersistentBehaviorFactory<C, E, S> behaviorFactory,
             EventStore<E> eventStore,
             SnapshotStore<S> snapshotStore) {
 
+        checkRunning();
+        if (shardRegions.containsKey(typeName)) throw new IllegalArgumentException("Duplicate region: " + typeName);
         LocalShardRegion<C, E, S> region = new LocalShardRegion<>(
             typeName, behaviorFactory, eventStore, snapshotStore,
             executor, config.defaultSupervision(), config.defaultMailboxCapacity()
@@ -67,18 +77,25 @@ public final class LocalActorSystem implements ActorSystem {
         return region;
     }
 
+    private boolean terminated;
+    private void checkRunning() { if (terminated) throw new IllegalStateException("Actor system terminated"); }
+
     @Override
     public String name() {
         return config.systemName();
     }
 
     @Override
-    public void terminate() {
+    public synchronized void terminate() {
+        terminated = true;
+        shardRegions.values().forEach(region -> ((LocalShardRegion<?, ?, ?>) region).close());
+        shardRegions.clear();
         topLevelActors.values().forEach(ref -> {
             if (ref instanceof LocalActorRef) {
-                ((LocalActorRef<?>) ref).mailbox().stop();
+                ((LocalActorRef<?>) ref).stop();
             }
         });
+        topLevelActors.clear();
         executor.shutdown();
     }
 }

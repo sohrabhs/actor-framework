@@ -101,6 +101,9 @@ public interface ActorContext<C> {
      */
     void stop(ActorRef<?> child);
 
+    /** Register idempotent resource cleanup, not business logic. May run on a stopping thread. */
+    default void onStop(Runnable cleanup) { throw new UnsupportedOperationException("Stop hooks unavailable"); }
+
     /**
      * Get a child by name (if it exists).
      */

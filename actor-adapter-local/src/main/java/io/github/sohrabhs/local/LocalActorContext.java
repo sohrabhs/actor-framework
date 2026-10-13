@@ -55,7 +55,8 @@ public final class LocalActorContext<C> implements ActorContext<C> {
     }
 
     @Override
-    public <M> ActorRef<M> spawn(BehaviorFactory<M> factory, String childName) {
+    public synchronized <M> ActorRef<M> spawn(BehaviorFactory<M> factory, String childName) {
+        checkName(childName);
         ActorPath childPath = path.child(childName);
 
         InMemoryMailbox<M> mailbox = new InMemoryMailbox<>(executor, mailboxCapacity);
@@ -65,50 +66,31 @@ public final class LocalActorContext<C> implements ActorContext<C> {
             childRef, childPath, null, executor, supervisionDecider, mailboxCapacity
         );
 
-        Behavior<M> behavior = factory.create(childContext);
+        childRef.onStop(() -> { childContext.close(); children.remove(childName, childRef); });
+        try {
+            Behavior<M> behavior = factory.create(childContext);
 
-        LocalActorCell<M> cell = new LocalActorCell<>(childRef, childContext, behavior, supervisionDecider);
-        mailbox.start(cell::processMessage);
-
-        children.put(childName, childRef);
-        return childRef;
+            LocalActorCell<M> cell = new LocalActorCell<>(childRef, childContext, behavior, supervisionDecider, factory);
+            children.put(childName, childRef);
+            mailbox.start(cell::processMessage);
+            return childRef;
+        } catch (RuntimeException | Error failure) {
+            childRef.stop();
+            throw failure;
+        }
     }
 
-    /**
-     * NEW METHOD: Spawn a persistent child actor.
-     *
-     * This method creates a full persistent actor as a child:
-     * 1. Creates mailbox and actor reference
-     * 2. Derives ActorIdentity from parent's path + childName
-     * 3. Creates a LocalPersistentActorCell (handles recovery + persistence)
-     * 4. Wires everything together
-     *
-     * CRITICAL DESIGN DECISION:
-     * The child's persistenceId is derived from the parent's context:
-     * Format: "ParentType-ParentId-ChildName"
-     * This ensures:
-     * - Unique persistence streams for each child
-     * - Hierarchical organization in event store
-     * - Easy debugging (you can see the full path in events)
-     *
-     * Example: If parent is VwapStrategy|STR-ETH-2026 and child is "twap-executor",
-     * the child's persistenceId becomes: "VwapStrategy-STR-ETH-2026-twap-executor"
-     */
+    /** A persistent child gets a storage identity scoped to its full parent path. */
     @Override
-    public <M, E, S> ActorRef<M> spawnPersistent(
+    public synchronized <M, E, S> ActorRef<M> spawnPersistent(
             PersistentBehaviorFactory<M, E, S> persistentBehaviorFactory,
             String childName,
             EventStore<E> eventStore,
             SnapshotStore<S> snapshotStore) {
 
-        // 1. Derive child identity from parent context
-        String parentType = identity != null ? identity.typeName() : path.name();
-        String parentId = identity != null ? identity.entityId() : path.name();
-        ActorIdentity childIdentity = new ActorIdentity(
-            parentType + "-Child",
-            parentId + "-" + childName
-        );
-        ActorPath childPath = childIdentity.toActorPath();
+        checkName(childName);
+        ActorPath childPath = path.child(childName);
+        ActorIdentity childIdentity = new ActorIdentity("child", childPath.toStringPath());
 
         // 2. Create mailbox and reference
         InMemoryMailbox<M> mailbox = new InMemoryMailbox<>(executor, mailboxCapacity);
@@ -119,29 +101,61 @@ public final class LocalActorContext<C> implements ActorContext<C> {
             childRef, childPath, childIdentity, executor, supervisionDecider, mailboxCapacity
         );
 
-        // 4. Create persistent behavior using the factory
-        PersistentBehavior<M, E, S> persistentBehavior = persistentBehaviorFactory.create(childName);
+        childRef.onStop(() -> { childContext.close(); children.remove(childName, childRef); });
+        try {
+            // 4. Create persistent behavior using the factory
+            PersistentBehavior<M, E, S> persistentBehavior = io.github.sohrabhs.actor.core.persistence.PersistentBehaviors.withIdentity(persistentBehaviorFactory.create(childName), childIdentity);
 
-        // 5. Create persistent actor cell (this handles recovery automatically)
-        LocalPersistentActorCell<M, E, S> cell = new LocalPersistentActorCell<>(
-            childRef, childContext, persistentBehavior, eventStore, snapshotStore, supervisionDecider
-        );
+            // 5. Create persistent actor cell (this handles recovery automatically)
+            LocalPersistentActorCell<M, E, S> cell = new LocalPersistentActorCell<>(
+                childRef, childContext, persistentBehavior, eventStore, snapshotStore, supervisionDecider
+            );
 
-        // 6. Wire mailbox to cell
-        mailbox.start(cell::processMessage);
+            children.put(childName, childRef);
+            mailbox.start(cell::processMessage);
 
-        // 7. Track child
-        children.put(childName, childRef);
-
-        return childRef;
+            return childRef;
+        } catch (RuntimeException | Error failure) {
+            childRef.stop();
+            throw failure;
+        }
     }
 
-    @Override
-    public void stop(ActorRef<?> child) {
-        String childName = child.path().name();
-        ActorRef<?> removed = children.remove(childName);
-        if (removed instanceof LocalActorRef) {
-            ((LocalActorRef<?>) removed).mailbox().stop();
+    private boolean stopped;
+
+    private void checkName(String name) {
+        if (stopped) throw new IllegalStateException("Parent is stopped");
+        if (name == null || name.isBlank() || name.contains("/")) throw new IllegalArgumentException("Invalid child name");
+        if (children.containsKey(name)) throw new IllegalArgumentException("Duplicate child: " + name);
+    }
+
+    void stopChildren() {
+        ActorRef<?>[] snapshot;
+        synchronized (this) { snapshot=children.values().toArray(new ActorRef<?>[0]); children.clear(); }
+        for (ActorRef<?> child:snapshot) ((LocalActorRef<?>) child).stop();
+    }
+
+    private final java.util.List<Runnable> stopHooks = new java.util.ArrayList<>();
+    @Override public void onStop(Runnable cleanup) {
+        java.util.Objects.requireNonNull(cleanup);
+        synchronized (this) { if (!stopped) { stopHooks.add(cleanup); return; } }
+        cleanup.run();
+    }
+    void close() {
+        java.util.List<Runnable> hooks;
+        synchronized (this) {
+            if (stopped) return;
+            stopped=true; hooks=new java.util.ArrayList<>(stopHooks); stopHooks.clear();
+        }
+        stopChildren();
+        for (Runnable hook:hooks) { try { hook.run(); } catch (RuntimeException e) { log("Cleanup failed: %s",e); } }
+    }
+
+    @Override public void stop(ActorRef<?> child) {
+        for (var entry:children.entrySet()) {
+            if (entry.getValue()==child && children.remove(entry.getKey(),child)) {
+                ((LocalActorRef<?>) child).stop(); return;
+            }
         }
     }
 

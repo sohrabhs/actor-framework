@@ -12,9 +12,15 @@ import io.github.sohrabhs.actor.core.persistence.SnapshotStore;
 public final class AkkaActorContextAdapter<C> implements ActorContext<C> {
 
     private final akka.actor.typed.javadsl.ActorContext<C> akkaCtx;
+    private final ActorIdentity persistentIdentity;
 
     public AkkaActorContextAdapter(akka.actor.typed.javadsl.ActorContext<C> akkaCtx) {
+        this(akkaCtx, null);
+    }
+
+    AkkaActorContextAdapter(akka.actor.typed.javadsl.ActorContext<C> akkaCtx, ActorIdentity identity) {
         this.akkaCtx = akkaCtx;
+        this.persistentIdentity = identity;
     }
 
     @Override
@@ -29,6 +35,7 @@ public final class AkkaActorContextAdapter<C> implements ActorContext<C> {
 
     @Override
     public ActorIdentity identity() {
+        if (persistentIdentity != null) return persistentIdentity;
         // For shard entities, this would be set differently
         String name = akkaCtx.getSelf().path().name();
         String parent = akkaCtx.getSelf().path().parent().name();
@@ -38,7 +45,7 @@ public final class AkkaActorContextAdapter<C> implements ActorContext<C> {
     @Override
     public <M> ActorRef<M> spawn(BehaviorFactory<M> factory, String childName) {
         akka.actor.typed.Behavior<M> akkaBehavior = AkkaBehaviorBridge.toBehavior(factory);
-        akka.actor.typed.ActorRef<M> akkaRef = akkaCtx.spawn(akkaBehavior, childName);
+        akka.actor.typed.ActorRef<M> akkaRef = akkaCtx.spawn(akkaBehavior, childName, akka.actor.typed.MailboxSelector.fromConfig("actor-framework.priority-mailbox"));
         return new AkkaActorRefAdapter<>(akkaRef);
     }
 
@@ -68,13 +75,13 @@ public final class AkkaActorContextAdapter<C> implements ActorContext<C> {
             SnapshotStore<S> snapshotStore) { // Ignored in Akka adapter
 
         // Create our PersistentBehavior
-        PersistentBehavior<M, E, S> ourBehavior = persistentBehaviorFactory.create(childName);
+        PersistentBehavior<M, E, S> ourBehavior = io.github.sohrabhs.actor.core.persistence.PersistentBehaviors.withIdentity(persistentBehaviorFactory.create(childName), new ActorIdentity("child",path().child(childName).toStringPath()));
 
         // Bridge to Akka EventSourcedBehavior
         akka.actor.typed.Behavior<M> akkaBehavior = AkkaPersistenceBridge.toBehavior(ourBehavior);
 
         // Spawn the actor in Akka
-        akka.actor.typed.ActorRef<M> akkaRef = akkaCtx.spawn(akkaBehavior, childName);
+        akka.actor.typed.ActorRef<M> akkaRef = akkaCtx.spawn(akkaBehavior, childName, akka.actor.typed.MailboxSelector.fromConfig("actor-framework.priority-mailbox"));
 
         return new AkkaActorRefAdapter<>(akkaRef);
     }
@@ -88,9 +95,14 @@ public final class AkkaActorContextAdapter<C> implements ActorContext<C> {
 
     @Override
     public <M> ActorRef<M> getChild(String childName) {
-        // Akka Typed doesn't have direct child lookup by name in the public API.
-        // In practice, you'd track children in a Map within the behavior.
-        return null;
+        return akkaCtx.getChild(childName).map(ref -> new AkkaActorRefAdapter<M>(ref.unsafeUpcast())).orElse(null);
+    }
+
+    private final java.util.List<Runnable> stopHooks = new java.util.ArrayList<>();
+    @Override public void onStop(Runnable cleanup) { stopHooks.add(java.util.Objects.requireNonNull(cleanup)); }
+    void stopped() {
+        for (Runnable hook : stopHooks) { try { hook.run(); } catch (RuntimeException e) { akkaCtx.getLog().error("Cleanup failed", e); } }
+        stopHooks.clear();
     }
 
     @Override

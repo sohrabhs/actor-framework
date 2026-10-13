@@ -20,13 +20,15 @@ final class LocalActorCell<C> {
     private final LocalActorRef<C> self;
     private final ActorContext<C> context;
     private volatile Behavior<C> currentBehavior;
+    private final BehaviorFactory<C> factory;
     private final SupervisionDecider supervisionDecider;
 
     LocalActorCell(
             LocalActorRef<C> self,
             ActorContext<C> context,
             Behavior<C> initialBehavior,
-            SupervisionDecider supervisionDecider) {
+            SupervisionDecider supervisionDecider, BehaviorFactory<C> factory) {
+        this.factory = factory;
         this.self = self;
         this.context = context;
         this.currentBehavior = initialBehavior;
@@ -41,7 +43,7 @@ final class LocalActorCell<C> {
             Behavior<C> next = currentBehavior.onMessage(context, message);
 
             if (Behaviors.isStopped(next)) {
-                self.mailbox().stop();
+                self.stop();
                 return;
             }
 
@@ -58,18 +60,20 @@ final class LocalActorCell<C> {
         switch (strategy) {
             case RESTART:
                 context.log("Actor restarting due to: %s", e.getMessage());
-                // In a real restart, we'd re-run the behavior factory.
-                // For simplicity in local adapter, we keep current behavior.
+                ((LocalActorContext<C>) context).stopChildren();
+                try { currentBehavior = factory.create(context); }
+                catch (RuntimeException failure) { self.stop(); throw failure; }
                 break;
             case STOP:
                 context.log("Actor stopping due to: %s", e.getMessage());
-                self.mailbox().stop();
+                self.stop();
                 break;
             case RESUME:
                 context.log("Actor resuming after: %s", e.getMessage());
                 break;
             case ESCALATE:
                 context.log("Escalating failure: %s", e.getMessage());
+                self.stop();
                 throw new RuntimeException("Escalated from actor " + self.path(), e);
         }
     }

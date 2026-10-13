@@ -21,10 +21,25 @@ public final class LocalActorRef<C> implements ActorRef<C> {
         this.mailbox = mailbox;
     }
 
+    private Runnable onStop = () -> {};
+    private final java.util.concurrent.atomic.AtomicBoolean stopped = new java.util.concurrent.atomic.AtomicBoolean();
+
+    void onStop(Runnable callback) { this.onStop = callback; }
+
+    void stop() {
+        if (stopped.compareAndSet(false, true)) {
+            mailbox.stop();
+            onStop.run();
+        }
+    }
+
     @Override
     public void tell(C message) {
         mailbox.enqueue(message);
     }
+
+    @Override
+    public io.github.sohrabhs.actor.core.mailbox.Delivery tryTell(C message) { return mailbox.tryEnqueue(message); }
 
     @Override
     public ActorPath path() {
