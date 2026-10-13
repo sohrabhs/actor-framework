@@ -61,7 +61,8 @@ final class LocalActorCell<C> {
             case RESTART:
                 context.log("Actor restarting due to: %s", e.getMessage());
                 ((LocalActorContext<C>) context).stopChildren();
-                currentBehavior = factory.create(context);
+                try { currentBehavior = factory.create(context); }
+                catch (RuntimeException failure) { self.stop(); throw failure; }
                 break;
             case STOP:
                 context.log("Actor stopping due to: %s", e.getMessage());

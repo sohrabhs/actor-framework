@@ -12,9 +12,15 @@ import io.github.sohrabhs.actor.core.persistence.SnapshotStore;
 public final class AkkaActorContextAdapter<C> implements ActorContext<C> {
 
     private final akka.actor.typed.javadsl.ActorContext<C> akkaCtx;
+    private final ActorIdentity persistentIdentity;
 
     public AkkaActorContextAdapter(akka.actor.typed.javadsl.ActorContext<C> akkaCtx) {
+        this(akkaCtx, null);
+    }
+
+    AkkaActorContextAdapter(akka.actor.typed.javadsl.ActorContext<C> akkaCtx, ActorIdentity identity) {
         this.akkaCtx = akkaCtx;
+        this.persistentIdentity = identity;
     }
 
     @Override
@@ -29,6 +35,7 @@ public final class AkkaActorContextAdapter<C> implements ActorContext<C> {
 
     @Override
     public ActorIdentity identity() {
+        if (persistentIdentity != null) return persistentIdentity;
         // For shard entities, this would be set differently
         String name = akkaCtx.getSelf().path().name();
         String parent = akkaCtx.getSelf().path().parent().name();

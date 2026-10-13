@@ -45,13 +45,18 @@ public final class LocalActorSystem implements ActorSystem {
         );
 
         ref.onStop(() -> { context.close(); topLevelActors.remove(name, ref); });
-        Behavior<C> behavior = factory.create(context);
-        LocalActorCell<C> cell = new LocalActorCell<>(ref, context, behavior, decider, factory);
+        try {
+            Behavior<C> behavior = factory.create(context);
+            LocalActorCell<C> cell = new LocalActorCell<>(ref, context, behavior, decider, factory);
 
-        topLevelActors.put(name, ref);
-        mailbox.start(cell::processMessage);
+            topLevelActors.put(name, ref);
+            mailbox.start(cell::processMessage);
 
-        return ref;
+            return ref;
+        } catch (RuntimeException | Error failure) {
+            ref.stop();
+            throw failure;
+        }
     }
 
     @Override

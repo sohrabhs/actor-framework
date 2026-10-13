@@ -38,7 +38,7 @@ public final class AkkaPersistenceBridge {
      */
     public static <C, E, S> Behavior<C> toBehavior(PersistentBehavior<C, E, S> ourBehavior) {
         return Behaviors.setup(akkaCtx -> {
-            ActorContext<C> ourContext = new AkkaActorContextAdapter<>(akkaCtx);
+            ActorContext<C> ourContext = new AkkaActorContextAdapter<>(akkaCtx, ourBehavior.identity());
 
             PersistenceId persistenceId = PersistenceId.ofUniqueId(
                     ourBehavior.identity().persistenceId()
